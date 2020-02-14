@@ -10,21 +10,18 @@ namespace dec {
 
     std::once_flag flag;
 
-    struct Decoder {
-        virtual auto decode(const std::string &filename) -> std::vector<float> = 0;
-    };
-
-    class Mpg123Wrapper : public Decoder {
+    class Mpg123Wrapper {
     public:
         Mpg123Wrapper();
+
         ~Mpg123Wrapper();
 
-        auto decode(const std::string &filename) -> std::vector<float> override;
+        auto decode(const std::string &filename) -> std::vector<float>;
 
     private:
         static void init();
 
-        static const size_t part_size = 1024;
+        static constexpr size_t part_size = 1024;
         mpg123_handle *mh;
     };
 
@@ -42,15 +39,18 @@ namespace dec {
             std::throw_with_nested(std::runtime_error("error creating mpg123 handler"));
         }
 
-        long flags = MPG123_MONO_MIX | MPG123_QUIET | MPG123_FORCE_FLOAT;
+        auto flags = MPG123_MONO_MIX | MPG123_QUIET | MPG123_FORCE_FLOAT;
         if (mpg123_param(mh, MPG123_FLAGS, flags, 0.) != MPG123_OK) {
             std::throw_with_nested(std::runtime_error("error adding parameters"));
         }
     }
 
     Mpg123Wrapper::~Mpg123Wrapper() {
+        if (mpg123_close(mh) != MPG123_OK) {
+            std::throw_with_nested(std::runtime_error("error closing handler"));
+        }
+
         mpg123_delete(mh);
-        mpg123_exit();
     }
 
     auto Mpg123Wrapper::decode(const std::string &filename) -> std::vector<float> {
@@ -71,7 +71,7 @@ namespace dec {
         size_t bytes_processed = 0;
 
         do {
-            int err = mpg123_read(mh, part, part_size, &bytes_read);
+            auto err = mpg123_read(mh, part, part_size, &bytes_read);
             samples.resize((bytes_processed + bytes_read) / 4 + 1);
             memcpy((unsigned char *) samples.data() + bytes_processed, part, bytes_read);
             bytes_processed += bytes_read;
@@ -81,7 +81,7 @@ namespace dec {
             }
 
             if (err != MPG123_OK) {
-                std::throw_with_nested(std::runtime_error("error reading frame from " + filename));
+                break;
             }
         } while (bytes_read > 0);
 
