@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstring>
 #include <exception>
 #include <mutex>
 #include <vector>
@@ -81,7 +82,7 @@ namespace dec {
             }
 
             if (err != MPG123_OK) {
-                break;
+                std::throw_with_nested(std::runtime_error("error reading bytes from " + filename));
             }
         } while (bytes_read > 0);
 
