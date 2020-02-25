@@ -39,36 +39,35 @@ namespace fp::algo {
         ~HashPrint() = default;
 
         auto calc(const vector<string> &filenames) const {
-            using range_type = tbb::blocked_range<vector<string>::const_iterator>;
+            tbb::concurrent_vector<CovarianceMatrix> res;
+
             std::mutex mtx;
-            auto cov = tbb::parallel_reduce(
-                    range_type(filenames.cbegin(), filenames.cend()),
-                    CovarianceMatrix(FrameSize, FrameSize),
-                    [this, &mtx](const range_type &r, CovarianceMatrix init) {
-                        for (const std::string &filename : r) {
-                            {
-                                std::scoped_lock lock(mtx);
-                                std::cout << filename << std::endl;
-                            }
-
-                            try {
-                                Mpg123Wrapper decoder;
-
-                                auto frames = calc_frames(decoder.decode(filename));
-                                init += calc_cov(frames.transpose());
-                            } catch (const std::exception &e) {
-                                std::cerr << e.what() << std::endl;
-                            }
+            tbb::parallel_for_each(
+                    filenames.cbegin(),
+                    filenames.cend(),
+                    [this, &mtx, &res](const std::string &filename) {
+                        {
+                            std::scoped_lock lock(mtx);
+                            std::cout << filename << std::endl;
                         }
 
-                        return init;
-                    },
-                    [](CovarianceMatrix x, CovarianceMatrix y) {
-                        return x + y;
+                        try {
+                            Mpg123Wrapper decoder;
+
+                            auto frames = calc_frames(decoder.decode(filename));
+                            res.push_back(calc_cov(frames.transpose()));
+                        } catch (const std::exception &e) {
+                            std::cerr << e.what() << std::endl;
+                        }
                     }
             );
 
-            return cov;
+            CovarianceMatrix accum_cov(FrameSize, FrameSize);
+            for (const auto &c : res) {
+                accum_cov += c;
+            }
+
+            return accum_cov;
         }
 
     private:

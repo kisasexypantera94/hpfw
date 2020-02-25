@@ -14,7 +14,7 @@ using std::string;
 using namespace fp::algo;
 using namespace dec;
 
-template<typename Algo = HashPrint<>, typename Decoder = Mpg123Wrapper>
+template<typename Algo = HashPrint<>>
 class AudioCombiner {
 public:
     using fingerprint = std::vector<typename extract_value_type<Algo>::value_type>;
