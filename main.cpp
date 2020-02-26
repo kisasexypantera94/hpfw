@@ -26,12 +26,15 @@ MatrixXi foo() {
 
     cout << &frames << endl;
 
-    return frames;
+    return mat;
 }
 
 int main1() {
     MatrixXi kek = foo();
+    MatrixXi kek2 = foo();
     cout << kek << endl;
+
+    cout << (kek2.array() != kek.array()).count() << endl;
 }
 
 int main() {
