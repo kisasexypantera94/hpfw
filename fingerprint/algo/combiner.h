@@ -2,9 +2,6 @@
 
 #include <vector>
 
-#include <tbb/parallel_for_each.h>
-#include <tbb/concurrent_vector.h>
-
 #include "../../helpers.h"
 #include "tsai.h"
 #include "mpg123_wrapper.h"
@@ -23,7 +20,7 @@ public:
 
     ~AudioCombiner() = default;
 
-    auto combine(const vector<string> &filenames) const {
+    void combine(const vector<string> &filenames) {
         algo.calc(filenames);
     }
 

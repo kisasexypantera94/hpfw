@@ -36,14 +36,15 @@ include_directories(
         /usr/local/include
         thirdparty/Gist/src
         thirdparty/eigen-3.3.7
+        thirdparty/cpp-taskflow-2.2.0
 )
 
 link_directories(/usr/local/lib)
 
 link_libraries(
         mpg123
-        tbb
         fftw3
+        tbb
 )
 
 add_library(
