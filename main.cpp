@@ -8,6 +8,7 @@
 namespace fs = std::filesystem;
 using namespace std;
 using Eigen::MatrixXi;
+using Eigen::Matrix;
 
 constexpr auto dir = "/Users/chingachgook/dev/rust/khalzam/resources";
 
@@ -30,11 +31,20 @@ MatrixXi foo() {
 }
 
 int main1() {
-    MatrixXi kek = foo();
-    MatrixXi kek2 = foo();
-    cout << kek << endl;
+//    MatrixXi kek = foo();
+//    MatrixXi kek2 = foo();
+//    cout << kek << endl;
+//
+//    cout << (kek2.array() != kek.array()).count() << endl;
 
-    cout << (kek2.array() != kek.array()).count() << endl;
+    Matrix<bool, 4, 4> mat = Matrix<bool, 4, 4>::Random(4, 4);
+    cout << mat << endl;
+    size_t p = 0;
+    cout << mat.row(1) << endl;
+    int n = mat.row(1).reverse().unaryExpr([&p](bool x) {
+        return x * pow(2, p++);
+    }).sum();
+    cout << n << endl;
 }
 
 int main() {
@@ -45,7 +55,7 @@ int main() {
     std::vector<std::string> files;
     for (const auto &f : it) {
         const auto &filename = f.path();
-        if (filename != "/Users/chingachgook/dev/rust/khalzam/resources/Aphex Twin - Xtal.mp3") {
+        if (filename.extension() != ".mp3") {
             continue;
         }
 

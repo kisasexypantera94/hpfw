@@ -5,6 +5,7 @@
 #include <vector>
 #include <filesystem>
 #include <map>
+#include <unordered_map>
 #include <algorithm>
 
 #include <Eigen/Dense>
@@ -26,6 +27,7 @@ using std::cout;
 using std::endl;
 using std::vector;
 using std::map;
+using std::unordered_map;
 using std::string;
 
 using Eigen::Dynamic;
@@ -43,7 +45,7 @@ namespace fp::algo {
             size_t FramesContext = 32,
             size_t MelBins = 33,
             size_t ChunkSize = 44100 / 10,
-            typename Real = float>
+            typename Real = double>
     class HashPrint {
     public:
         HashPrint() {
@@ -53,7 +55,7 @@ namespace fp::algo {
         ~HashPrint() = default;
 
         int calc(const vector<string> &filenames) {
-            Fingerprints fingerprints = prepare(filenames);
+            prepare(filenames);
 
             return 0;
         }
@@ -62,25 +64,31 @@ namespace fp::algo {
     private:
         static constexpr size_t FrameSize = MelBins * FramesContext;
         static constexpr size_t W = FramesContext / 2;
-
-
-        using CovarianceMatrix = Matrix<Real, Dynamic, Dynamic>; // to pass static_assert
+//      ----------------------------------------------------------------------------------------------------------------
         using Spectrogram = Matrix<Real, MelBins, Dynamic>;
+//      ----------------------------------------------------------------------------------------------------------------
         using Frames = Matrix<Real, FrameSize, Dynamic, Eigen::RowMajor>;
-
         using SongFramesPair = std::pair<string, Frames>;
 
+        using CovarianceMatrix = Matrix<Real, Dynamic, Dynamic>; // to pass static_assert
+//      ----------------------------------------------------------------------------------------------------------------
         using Filters = Matrix<Real, Dynamic, Dynamic>;
 
         using Features = Matrix<bool, Dynamic, 16>;
         using SongFeaturesPair = std::pair<string, Features>;
         using Fingerprints = concurrent_vector<SongFeaturesPair>;
 
+        using SongOffsetPair = std::pair<string, size_t>;
+
+        using DB = unordered_map<N, vector<SongOffsetPair>>;
+
         tf::Executor executor;
         Filters filters;
 
+        DB db;
 
-        void find(const Fingerprints &fingerprints) {
+
+        void find() {
             auto it = std::filesystem::directory_iterator("/Users/chingachgook/dev/rust/khalzam/samples");
             for (const auto &f : it) {
                 const auto &filename = f.path();
@@ -102,20 +110,20 @@ namespace fp::algo {
 
                 std::pair<long long, string> mx;
                 map<string, map<long long, long long>> cnt;
-                for (size_t i = 0; i < fingerprints.size(); ++i) {
-                    auto n = fingerprints[i].second.rows();
-                    auto k = fp.rows();
+                auto k = fp.rows();
 
-                    for (long long kek = 0; kek < k; ++kek) {
-                        for (long long l = 0; l < n; ++l) {
-                            if ((fingerprints[i].second.row(l).array() != fp.row(kek).array()).count() == 0) {
-                                auto offset = kek - l;
-                                ++cnt[fingerprints[i].first][offset];
-                                if (cnt[fingerprints[i].first][offset] > mx.first) {
-                                    mx = {cnt[fingerprints[i].first][offset], fingerprints[i].first};
-                                    bestIndex = offset;
-                                }
-                            }
+                for (long long kek = 0; kek < k; ++kek) {
+                    size_t p = 0;
+                    N n = fp.row(kek).reverse().unaryExpr([&p](bool x) {
+                        return x * pow(2, p++);
+                    }).sum();
+
+                    for (const auto &x : db[n]) {
+                        auto offset = kek - x.second;
+                        ++cnt[x.first][offset];
+                        if (cnt[x.first][offset] > mx.first) {
+                            mx = {cnt[x.first][offset], x.first};
+                            bestIndex = offset;
                         }
                     }
                 }
@@ -124,14 +132,28 @@ namespace fp::algo {
             }
         }
 
-        Fingerprints
-
-        prepare(const vector<string> &filenames) {
+        void prepare(const vector<string> &filenames) {
             concurrent_vector<SongFramesPair> frames = preprocess(filenames);
             Fingerprints fingerprints = calc_features(frames);
-            find(fingerprints);
 
-            return fingerprints;
+            build_db(fingerprints);
+            find();
+        }
+
+        void build_db(const Fingerprints &fingerprints) {
+            for (const auto &fingerprint : fingerprints) {
+                auto song = fingerprint.first;
+                auto fp = fingerprint.second;
+
+                for (size_t i = 0; i < fp.rows(); ++i) {
+                    size_t p = 0;
+                    N n = fp.row(i).reverse().unaryExpr([&p](bool x) {
+                        return x * pow(2, p++);
+                    }).sum();
+
+                    db[n].push_back({song, i});
+                }
+            }
         }
 
         concurrent_vector<SongFramesPair> preprocess(const vector<string> &filenames) {
@@ -150,13 +172,7 @@ namespace fp::algo {
                             Mpg123Wrapper decoder;
 
                             auto samples = decoder.decode(filename);
-                            Spectrogram s = calc_spectro(samples);
-                            std::ofstream file("test.txt");
-                            if (file.is_open()) {
-                                file << s << '\n';
-                            }
-
-                            auto f = frames.push_back({filename, calc_frames(s)});
+                            auto f = frames.push_back({filename, calc_frames(calc_spectro(samples))});
 
                             CovarianceMatrix cov = calc_cov(f->second.transpose());
                             {
@@ -224,18 +240,17 @@ namespace fp::algo {
                 Matrix<Real, Dynamic, Dynamic, Eigen::RowMajor> x = spectrogram.block(0, i - W, MelBins, FramesContext);
                 x.resize(FrameSize, 1);
 
-                frames.col(cnt) = x;
+                frames.col(cnt) = std::move(x);
             }
 
             return frames;
         }
 
-        static Spectrogram calc_spectro(const vector<Real> &samples) {
+        static Spectrogram calc_spectro(const vector<float> &samples) {
             MFCC<Real> mfcc(static_cast<int>(ChunkSize), 44100);
             Gist<Real> gist(static_cast<int>(ChunkSize), 44100);
             mfcc.setNumCoefficients(static_cast<int>(MelBins));
 
-            std::cout << samples.size() << std::endl;
             Spectrogram spectrogram(MelBins, samples.size() / (44100 / 100));
 
             size_t cnt = 0;
@@ -246,7 +261,7 @@ namespace fp::algo {
                        gist.processAudioFrame({from, to});
                        mfcc.calculateMelFrequencySpectrum(gist.getMagnitudeSpectrum());
 
-                       spectrogram.col(cnt) = Matrix<Real, MelBins, 1>(mfcc.melSpectrum.data());
+                       spectrogram.col(cnt) = Matrix<Real, MelBins, 1>::Map(mfcc.melSpectrum.data());
                        ++cnt;
                    },
                    44100 / 100);
@@ -254,8 +269,9 @@ namespace fp::algo {
             double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
             spectrogram = 10.0 * ((spectrogram).array() < 1e-10).select(1e-10, spectrogram).array().log10() -
                           10.0 * log10(maxVal);
-            maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
-            spectrogram = (spectrogram.array() < double(maxVal - 80.0)).select(maxVal - 80.0, spectrogram);
+            maxVal = spectrogram.maxCoeff();
+            spectrogram = (spectrogram.array() < (maxVal - 80.0)).select(maxVal - 80.0, spectrogram);
+
 
             return spectrogram;
         }
