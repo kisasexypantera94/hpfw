@@ -5,6 +5,7 @@
 #include <vector>
 #include <filesystem>
 #include <map>
+#include <algorithm>
 
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
@@ -17,6 +18,7 @@
 
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
+#include <fstream>
 
 using namespace dec;
 
@@ -40,7 +42,7 @@ namespace fp::algo {
     template<typename N = int32_t,
             size_t FramesContext = 32,
             size_t MelBins = 33,
-            size_t ChunkSize = 512,
+            size_t ChunkSize = 44100 / 10,
             typename Real = float>
     class HashPrint {
     public:
@@ -52,7 +54,6 @@ namespace fp::algo {
 
         int calc(const vector<string> &filenames) {
             Fingerprints fingerprints = prepare(filenames);
-            find(fingerprints);
 
             return 0;
         }
@@ -65,13 +66,13 @@ namespace fp::algo {
 
         using CovarianceMatrix = Matrix<Real, Dynamic, Dynamic>; // to pass static_assert
         using Spectrogram = Matrix<Real, MelBins, Dynamic>;
-        using Frames = Matrix<Real, FrameSize, Dynamic>;
+        using Frames = Matrix<Real, FrameSize, Dynamic, Eigen::RowMajor>;
 
         using SongFramesPair = std::pair<string, Frames>;
 
-        using Filters = Matrix<Real, 16, Dynamic>;
+        using Filters = Matrix<Real, Dynamic, Dynamic>;
 
-        using Features = Matrix<bool, 16, Dynamic>;
+        using Features = Matrix<bool, Dynamic, 16>;
         using SongFeaturesPair = std::pair<string, Features>;
         using Fingerprints = concurrent_vector<SongFeaturesPair>;
 
@@ -98,24 +99,28 @@ namespace fp::algo {
 
                 long long bestDistance = 10000000000, bestIndex = -1;
                 string bestSong = "";
-                for (size_t i = 0; i < fingerprints.size(); ++i) {
-                    auto n = fingerprints[i].second.cols();
-                    auto k = fp.cols();
 
-                    for (long long l = 0; l < n - k; ++l) {
-                        auto distance = (fp.array() != fingerprints[i]
-                                .second.block(0, l, 16, k)
-                                .array()).count();
-                        if (distance < bestDistance) {
-                            bestDistance = distance;
-                            bestIndex = l;
-                            bestSong = fingerprints[i].first;
+                std::pair<long long, string> mx;
+                map<string, map<long long, long long>> cnt;
+                for (size_t i = 0; i < fingerprints.size(); ++i) {
+                    auto n = fingerprints[i].second.rows();
+                    auto k = fp.rows();
+
+                    for (long long kek = 0; kek < k; ++kek) {
+                        for (long long l = 0; l < n; ++l) {
+                            if ((fingerprints[i].second.row(l).array() != fp.row(kek).array()).count() == 0) {
+                                auto offset = kek - l;
+                                ++cnt[fingerprints[i].first][offset];
+                                if (cnt[fingerprints[i].first][offset] > mx.first) {
+                                    mx = {cnt[fingerprints[i].first][offset], fingerprints[i].first};
+                                    bestIndex = offset;
+                                }
+                            }
                         }
                     }
                 }
 
-                cout << bestSong << " " << bestDistance << " " << bestIndex <<
-                     endl;
+                cout << mx.second << " " << mx.first << " " << bestIndex << endl;
             }
         }
 
@@ -124,8 +129,7 @@ namespace fp::algo {
         prepare(const vector<string> &filenames) {
             concurrent_vector<SongFramesPair> frames = preprocess(filenames);
             Fingerprints fingerprints = calc_features(frames);
-            cout << frames[0].second.rows() << " " << frames[0].second.cols() << endl;
-            cout << fingerprints[0].second.rows() << " " << fingerprints[0].second.cols() << endl;
+            find(fingerprints);
 
             return fingerprints;
         }
@@ -147,6 +151,11 @@ namespace fp::algo {
 
                             auto samples = decoder.decode(filename);
                             Spectrogram s = calc_spectro(samples);
+                            std::ofstream file("test.txt");
+                            if (file.is_open()) {
+                                file << s << '\n';
+                            }
+
                             auto f = frames.push_back({filename, calc_frames(s)});
 
                             CovarianceMatrix cov = calc_cov(f->second.transpose());
@@ -163,6 +172,9 @@ namespace fp::algo {
 
             executor.run(taskflow).wait();
 
+            accum_cov /= frames.size();
+
+
             filters = calc_filters(accum_cov);
 
             return frames;
@@ -173,7 +185,7 @@ namespace fp::algo {
             cout << "|             Calculating filters              |" << endl;
             cout << "|----------------------------------------------|" << endl;
             SelfAdjointEigenSolver<CovarianceMatrix> solver(cov);
-            return solver.eigenvectors().block(0, 0, FrameSize, 16).transpose();
+            return solver.eigenvectors().rowwise().reverse().transpose().block(0, 0, 16, FrameSize);
         }
 
         template<typename Iterable>
@@ -192,14 +204,15 @@ namespace fp::algo {
 
             executor.run(taskflow).wait();
 
+
             return features;
         }
 
-        static Matrix<bool, 16, Dynamic> calc_delta(const Matrix<Real, 16, Dynamic> &f, size_t t = 50) {
-            Matrix<bool, 16, Dynamic> delta(16, f.cols() - t);
-            for (size_t i = t, cnt = 0; i < f.cols() - t; ++i, ++cnt) {
+        static Matrix<bool, Dynamic, 16> calc_delta(const Matrix<Real, 16, Dynamic> &f, size_t t = 50) {
+            Matrix<bool, Dynamic, 16> delta(f.cols() - t, 16);
+            for (size_t i = 0; i < f.cols() - t; ++i) {
                 Matrix<Real, 16, 1> diff = f.col(i) - f.col(i + t);
-                delta.col(cnt) = (diff.array() > 0.0);
+                delta.row(i) = (diff.array() >= 0);
             }
 
             return delta;
@@ -208,9 +221,10 @@ namespace fp::algo {
         static Frames calc_frames(const Spectrogram &spectrogram) {
             Frames frames(FrameSize, spectrogram.cols() - 2 * W + 1);
             for (size_t i = W, cnt = 0; i < spectrogram.cols() - W + 1; ++i, ++cnt) {
-                frames.col(cnt) = Matrix<Real, FrameSize, 1>::Map(
-                        spectrogram.block(0, i - W, MelBins, FramesContext).data()
-                );
+                Matrix<Real, Dynamic, Dynamic, Eigen::RowMajor> x = spectrogram.block(0, i - W, MelBins, FramesContext);
+                x.resize(FrameSize, 1);
+
+                frames.col(cnt) = x;
             }
 
             return frames;
@@ -221,7 +235,8 @@ namespace fp::algo {
             Gist<Real> gist(static_cast<int>(ChunkSize), 44100);
             mfcc.setNumCoefficients(static_cast<int>(MelBins));
 
-            Spectrogram spectrogram(MelBins, samples.size() / ChunkSize);
+            std::cout << samples.size() << std::endl;
+            Spectrogram spectrogram(MelBins, samples.size() / (44100 / 100));
 
             size_t cnt = 0;
             chunks(samples.cbegin(),
@@ -231,9 +246,16 @@ namespace fp::algo {
                        gist.processAudioFrame({from, to});
                        mfcc.calculateMelFrequencySpectrum(gist.getMagnitudeSpectrum());
 
-                       spectrogram.col(cnt) = Matrix<Real, MelBins, 1>::Map(mfcc.melSpectrum.data());
+                       spectrogram.col(cnt) = Matrix<Real, MelBins, 1>(mfcc.melSpectrum.data());
                        ++cnt;
-                   });
+                   },
+                   44100 / 100);
+
+            double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
+            spectrogram = 10.0 * ((spectrogram).array() < 1e-10).select(1e-10, spectrogram).array().log10() -
+                          10.0 * log10(maxVal);
+            maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
+            spectrogram = (spectrogram.array() < double(maxVal - 80.0)).select(maxVal - 80.0, spectrogram);
 
             return spectrogram;
         }

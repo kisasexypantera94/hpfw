@@ -1,21 +1,17 @@
 #pragma once
 
-template<typename Iterator, typename Func, bool exact = true>
-auto chunks(Iterator begin, Iterator end, long k, Func f) {
+template<typename Iterator, typename Func>
+auto chunks(Iterator begin, Iterator end, long k, Func f, long hop_length) {
     auto chunk_begin = begin;
     auto chunk_end = begin;
+    std::advance(chunk_end, k);
 
-    do {
-        if (std::distance(chunk_end, end) < k) {
-            chunk_end = end;
-        } else {
-            std::advance(chunk_end, k);
-        }
-
+    while (std::distance(chunk_begin, end) >= k) {
         f(chunk_begin, chunk_end);
 
-        chunk_begin = chunk_end;
-    } while (std::distance(chunk_begin, end) >= (exact ? k : 1));
+        std::advance(chunk_begin, hop_length);
+        std::advance(chunk_end, hop_length);
+    }
 }
 
 template<typename T>

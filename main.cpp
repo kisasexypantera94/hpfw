@@ -45,7 +45,7 @@ int main() {
     std::vector<std::string> files;
     for (const auto &f : it) {
         const auto &filename = f.path();
-        if (filename.extension() != ".mp3") {
+        if (filename != "/Users/chingachgook/dev/rust/khalzam/resources/Aphex Twin - Xtal.mp3") {
             continue;
         }
 
