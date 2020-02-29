@@ -58,35 +58,12 @@ namespace hpfw {
 
         ~HashPrint() = default;
 
-        static auto from_dump(const std::string &dump_name) -> HashPrint {
-            HashPrint hp;
-
-            {
-                std::ifstream is(dump_name, std::ios::binary);
-                cereal::BinaryInputArchive archive(is);
-                archive(hp);
-            }
-
-            return hp;
-        }
-
         void prepare(const vector<string> &filenames) {
             if (db.size() > 0) {
                 return;
             }
 
             build_db(calc_features(preprocess(filenames)));
-        }
-
-        auto dump(const std::optional<string> &filename) const -> string {
-            const auto dump_name = filename.value_or("db/dump.cereal");
-            {
-                std::ofstream os(dump_name, std::ios::binary);
-                cereal::BinaryOutputArchive archive(os);
-                archive(*this);
-            }
-
-            return dump_name;
         }
 
         struct SearchResult {
@@ -121,6 +98,29 @@ namespace hpfw {
             }
 
             return res;
+        }
+
+        auto dump(const std::optional<string> &filename) const -> string {
+            const auto dump_name = filename.value_or("db/dump.cereal");
+            {
+                std::ofstream os(dump_name, std::ios::binary);
+                cereal::BinaryOutputArchive archive(os);
+                archive(*this);
+            }
+
+            return dump_name;
+        }
+
+        static auto from_dump(const std::string &dump_name) -> HashPrint {
+            HashPrint hp;
+
+            {
+                std::ifstream is(dump_name, std::ios::binary);
+                cereal::BinaryInputArchive archive(is);
+                archive(hp);
+            }
+
+            return hp;
         }
 
         template<class Archive>
