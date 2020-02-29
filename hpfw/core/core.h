@@ -40,6 +40,36 @@ namespace hpfw {
     using namespace hpfw::io;
     using namespace helpers;
 
+
+    /// Algorithm:
+    ///
+    /// 1. Compute spectrogram. The first step is to compute a time-frequency representation of audio.
+    /// This time-frequency representation can be selected to suit the characteristics of the problem at hand.
+    /// At the end of this first step, the audio is represented at each frame by a vector of dimension B,
+    /// where B is the number of frequency subbands.
+    ///
+    /// 2. Collect context frames. In addition to looking at the audio frame of interest, we also look at the
+    /// neighboring frames to its left and right. When computing the fingerprint at a particular frame, we consider
+    /// w frames of context. At the end of this second step, we represent each frame with a vector of dimension Bw.
+    ///
+    /// 3. Apply spectro-temporal filters. At each frame we apply N different spectro-temporal filters in order
+    /// to compute N different spectro-temporal features. Each spectro-temporal feature is a linear combination of
+    /// the spectrogram energy values for the current frame and surrounding context frames. The weights of this
+    /// linear combination are specified by the coefficients in the spectro-temporal filters. These filters are
+    /// learned in an unsupervised manner by solving a sequence of optimization problems.
+    /// At the end of this third step, we have N spectro-temporal features per frame.
+    ///
+    /// 4. Compute deltas. For each of our N features, we compute the change in the feature value over a time lag T.
+    /// If the feature value at frame n is given by xn, then the corresponding delta feature will be ∆n = xn − xn+T .
+    /// At the end of this fourth step, we have N spectro-temporal delta features per frame.
+    ///
+    /// 5. Apply threshold. Each of the N delta features is compared to a threshold value of 0, which results in a
+    /// binary value. Each of these binary values thus represents whether the delta feature is increasing or
+    /// decreasing over time (across the time lag T). At the end of the fifth step, we have N binary values per frame.
+    ///
+    /// 6. Bit packing. The N binary values are packed into a single 32-bit or 64-bit integer which represents the
+    /// hashprint value for a single frame. This compact binary representation will allow us to store fingerprints
+    /// in memory efficiently, do reverse indexing, or compute Hamming distance between hashprints very quickly.
     template<typename N = uint16_t,
             size_t FramesContext = 32,
             size_t MelBins = 33,
@@ -58,6 +88,7 @@ namespace hpfw {
 
         ~HashPrint() = default;
 
+        /// Process audiofiles, calculate filters and build database.
         void prepare(const vector<string> &filenames) {
             if (db.size() > 0) {
                 return;
@@ -72,6 +103,7 @@ namespace hpfw {
             long long offset;
         };
 
+        /// Process audiofile and find best match in database.
         auto find(const std::string &filename) -> SearchResult {
             std::cout << "FINDING " << filename << std::endl;
 
@@ -100,39 +132,28 @@ namespace hpfw {
             return res;
         }
 
+        /// Dump database and filters.
         auto dump(const std::optional<string> &filename) const -> string {
             const auto dump_name = filename.value_or("db/dump.cereal");
             {
                 std::ofstream os(dump_name, std::ios::binary);
                 cereal::BinaryOutputArchive archive(os);
-                archive(*this);
+                archive(db);
+                archive(filters);
             }
-
             return dump_name;
         }
 
+        /// Create new HashPrint instance from dump.
         static auto from_dump(const std::string &dump_name) -> HashPrint {
             HashPrint hp;
-
             {
                 std::ifstream is(dump_name, std::ios::binary);
                 cereal::BinaryInputArchive archive(is);
-                archive(hp);
+                archive(hp.db);
+                archive(hp.filters);
             }
-
             return hp;
-        }
-
-        template<class Archive>
-        void save(Archive &ar) const {
-            ar(db);
-            ar(filters);
-        }
-
-        template<class Archive>
-        void load(Archive &ar) {
-            ar(db);
-            ar(filters);
         }
 
     private:
@@ -179,6 +200,7 @@ namespace hpfw {
         Filters filters;
         DB db;
 
+        /// Calculate frames and filters. Steps 1-3.
         auto preprocess(const vector<string> &filenames) -> concurrent_vector<FilenameFramesPair> {
             cout << "|----------------------------------------------|" << endl;
             cout << "|Calculating spectrograms and covariance matrix|" << endl;
@@ -212,6 +234,7 @@ namespace hpfw {
             return frames;
         }
 
+        /// Calculate features. Steps 3-5.
         template<typename Iterable>
         auto calc_features(const Iterable &frames) -> concurrent_vector<FilenameFeaturesPair> {
             cout << "|----------------------------------------------|" << endl;
@@ -231,6 +254,7 @@ namespace hpfw {
             return features;
         }
 
+        /// Build database. Step 6.
         void build_db(const concurrent_vector<FilenameFeaturesPair> &features_vec) {
             for (const auto &[filename, features]: features_vec) {
                 for (size_t i = 0, num_rows = features.rows(); i < num_rows; ++i) {
@@ -287,6 +311,7 @@ namespace hpfw {
             return (centered.adjoint() * centered) / double(mat.rows() - 1);
         }
 
+        /// Find top N eigen vectors - these are the filters.
         static auto calc_filters(const CovarianceMatrix &cov) -> Filters {
             cout << "|----------------------------------------------|" << endl;
             cout << "|             Calculating filters              |" << endl;
@@ -295,15 +320,17 @@ namespace hpfw {
             return solver.eigenvectors().rowwise().reverse().transpose().block(0, 0, NumOfFilters, FrameSize);
         }
 
+        /// Calculate deltas and apply threshold.
         static auto calc_delta(const Matrix<Real, NumOfFilters, Dynamic> &f) -> Features {
             Matrix<bool, Dynamic, NumOfFilters> delta(f.cols() - T, NumOfFilters);
             for (size_t i = 0; i < f.cols() - T; ++i) {
-                delta.row(i) = ((f.col(i) - f.col(i + T)).array() >= 0);
+                delta.row(i) = (f.col(i) - f.col(i + T)).array() >= 0;
             }
 
             return delta;
         }
 
+        /// Pack bool row into integer.
         static auto bool_row_to_num(const Features &f, size_t r) -> N {
             size_t p = 0;
             return f.row(r).reverse().unaryExpr([&p](bool x) {
