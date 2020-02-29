@@ -1,7 +1,7 @@
 #include <filesystem>
 #include <iostream>
 
-#include "fingerprint/algo/combiner.h"
+#include "hashprint/algo/combiner.h"
 
 namespace fs = std::filesystem;
 using namespace std;

@@ -21,7 +21,7 @@
 
 #include "../../helpers.h"
 #include "mpg123_wrapper.h"
-#include "tsai.h"
+#include "core.h"
 
 namespace fp::algo {
 
@@ -78,12 +78,12 @@ namespace fp::algo {
             build_db(calc_features(preprocess(filenames)));
         }
 
-        auto dump(const std::optional<string> &filename) -> string {
+        auto dump(const std::optional<string> &filename) const -> string {
             const auto dump_name = filename.value_or("db/dump.cereal");
             {
                 std::ofstream os(dump_name, std::ios::binary);
                 cereal::BinaryOutputArchive archive(os);
-                archive(this);
+                archive(*this);
             }
 
             return dump_name;
@@ -311,6 +311,6 @@ namespace fp::algo {
             }).sum();
         }
 
-    };
+    }; // HashPrint
 
-}
+} // fp::algo

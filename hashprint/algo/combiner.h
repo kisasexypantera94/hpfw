@@ -6,7 +6,7 @@
 namespace fs = std::filesystem;
 
 #include "../../helpers.h"
-#include "tsai.h"
+#include "core.h"
 
 using std::vector;
 using std::string;
@@ -35,6 +35,8 @@ public:
             auto res = algo.find(filename);
             cout << res.filename << " " << res.cnt << " " << res.offset << endl << endl;
         }
+
+        algo.dump(std::nullopt);
     }
 
 

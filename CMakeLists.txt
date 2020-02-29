@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(audio-combiner LANGUAGES CXX)
+project(hpfw LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -37,7 +37,6 @@ include_directories(
         /usr/local/include
         thirdparty/Gist/src
         thirdparty/cpp-taskflow-2.2.0
-        thirdparty/pipes/include
 )
 
 link_directories(/usr/local/lib)
@@ -63,9 +62,9 @@ add_library(
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 add_executable(
-        audio-combiner
+        hpfw
 
         main.cpp
-        fingerprint/algo/tsai.h fingerprint/algo/combiner.h)
+)
 
-target_link_libraries(audio-combiner Gist Eigen3::Eigen)
+target_link_libraries(hpfw Gist Eigen3::Eigen)
