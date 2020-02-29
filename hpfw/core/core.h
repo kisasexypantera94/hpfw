@@ -7,23 +7,22 @@
 #include <unordered_map>
 #include <vector>
 
+#include <cereal/types/unordered_map.hpp>
+#include <cereal/types/vector.hpp>
+#include <cereal/types/memory.hpp>
+#include <cereal/archives/binary.hpp>
+#include <cereal/cereal.hpp>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 #include <Gist.h>
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
 
-#include <cereal/types/unordered_map.hpp>
-#include <cereal/types/vector.hpp>
-#include <cereal/types/memory.hpp>
-#include <cereal/archives/binary.hpp>
-#include <cereal/cereal.hpp>
-
-#include "../../helpers.h"
-#include "mpg123_wrapper.h"
+#include "../helpers.h"
+#include "../io/mpg123_wrapper.h"
 #include "core.h"
 
-namespace fp::algo {
+namespace hpfw {
 
     using std::cout;
     using std::endl;
@@ -38,7 +37,8 @@ namespace fp::algo {
     using Eigen::SelfAdjointEigenSolver;
     using tbb::concurrent_vector;
 
-    using namespace dec;
+    using namespace hpfw::io;
+    using namespace helpers;
 
     template<typename N = uint16_t,
             size_t FramesContext = 32,
@@ -313,4 +313,4 @@ namespace fp::algo {
 
     }; // HashPrint
 
-} // fp::algo
+} // hpfw

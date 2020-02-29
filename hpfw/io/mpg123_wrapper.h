@@ -7,7 +7,7 @@
 
 #include <mpg123.h>
 
-namespace dec {
+namespace hpfw::io {
 
     std::once_flag flag;
 
@@ -95,4 +95,4 @@ namespace dec {
         return samples;
     }
 
-}
+} // hpfw::io

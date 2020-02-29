@@ -1,25 +1,31 @@
 #pragma once
 
+#include <fstream>
+
 #include <cereal/cereal.hpp>
 #include <cereal/archives/binary.hpp>
 #include <Eigen/Dense>
-#include <fstream>
 
-template<typename Iterator, typename Func>
-auto chunks(Iterator begin, Iterator end, long k, long hop_length, Func f) {
-    auto chunk_begin = begin;
-    auto chunk_end = begin;
-    std::advance(chunk_end, k);
+namespace helpers {
 
-    while (std::distance(chunk_begin, end) >= k) {
-        f(chunk_begin, chunk_end);
+    template<typename Iterator, typename Func>
+    auto chunks(Iterator begin, Iterator end, long k, long hop_length, Func f) {
+        auto chunk_begin = begin;
+        auto chunk_end = begin;
+        std::advance(chunk_end, k);
 
-        std::advance(chunk_begin, hop_length);
-        std::advance(chunk_end, hop_length);
+        while (std::distance(chunk_begin, end) >= k) {
+            f(chunk_begin, chunk_end);
+
+            std::advance(chunk_begin, hop_length);
+            std::advance(chunk_end, hop_length);
+        }
     }
-}
+
+} // helpers
 
 namespace cereal {
+
     template<class Archive, class _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
     typename std::enable_if<traits::is_output_serializable<BinaryData<_Scalar>, Archive>::value, void>::type
@@ -44,5 +50,6 @@ namespace cereal {
 
         ar(binary_data(m.data(), static_cast<std::size_t>(rows * cols * sizeof(_Scalar))));
     }
-}
+
+} // cereal
 

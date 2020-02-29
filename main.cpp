@@ -1,7 +1,7 @@
 #include <filesystem>
 #include <iostream>
 
-#include "hashprint/algo/combiner.h"
+#include "hpfw/audioproblems/combiner.h"
 
 namespace fs = std::filesystem;
 using namespace std;
@@ -23,7 +23,7 @@ int main() {
         files.emplace_back(filename);
     }
 
-    AudioCombiner combiner;
+    hpfw::AudioCombiner combiner;
     combiner.combine(files);
 
     return 0;
