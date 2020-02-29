@@ -1,10 +1,12 @@
 #pragma once
 
 #include <vector>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 #include "../../helpers.h"
 #include "tsai.h"
-#include "mpg123_wrapper.h"
 
 using std::vector;
 using std::string;
@@ -14,15 +16,27 @@ using namespace dec;
 template<typename Algo = HashPrint<>>
 class AudioCombiner {
 public:
-    using fingerprint = std::vector<typename extract_value_type<Algo>::value_type>;
-
     AudioCombiner() = default;
+
+    AudioCombiner(Algo &&algo) : algo(std::move(algo)) {}
 
     ~AudioCombiner() = default;
 
     void combine(const vector<string> &filenames) {
-        algo.calc(filenames);
+        algo.prepare(filenames);
+
+        auto it = fs::directory_iterator("/Users/chingachgook/dev/rust/khalzam/samples");
+        for (const auto &f : it) {
+            const auto &filename = f.path();
+            if (filename.extension() != ".mp3") {
+                continue;
+            }
+
+            auto res = algo.find(filename);
+            cout << res.filename << " " << res.cnt << " " << res.offset << endl << endl;
+        }
     }
+
 
 private:
     Algo algo;

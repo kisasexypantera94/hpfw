@@ -8,7 +8,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_definitions(
         -DUSE_FFTW
-        -O3
+        -ffast-math
+        -Ofast
         -march=native
 
         -pedantic
@@ -35,8 +36,8 @@ include_directories(
 
         /usr/local/include
         thirdparty/Gist/src
-        thirdparty/eigen-3.3.7
         thirdparty/cpp-taskflow-2.2.0
+        thirdparty/pipes/include
 )
 
 link_directories(/usr/local/lib)
@@ -54,11 +55,12 @@ add_library(
         thirdparty/Gist/src/core/CoreTimeDomainFeatures.cpp
         thirdparty/Gist/src/mfcc/MFCC.cpp
         thirdparty/Gist/src/onset-detection-functions/OnsetDetectionFunction.cpp
-#        thirdparty/Gist/src/fft/AccelerateFFT.cpp
         thirdparty/Gist/src/fft/WindowFunctions.cpp
         thirdparty/Gist/src/pitch/Yin.cpp
         thirdparty/Gist/src/Gist.cpp
 )
+
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 add_executable(
         audio-combiner
@@ -66,4 +68,4 @@ add_executable(
         main.cpp
         fingerprint/algo/tsai.h fingerprint/algo/combiner.h)
 
-target_link_libraries(audio-combiner Gist)
+target_link_libraries(audio-combiner Gist Eigen3::Eigen)
