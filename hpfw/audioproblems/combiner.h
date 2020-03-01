@@ -4,7 +4,7 @@
 #include <filesystem>
 
 #include "../helpers.h"
-#include "../core/core.h"
+#include "../core/hashprint.h"
 
 namespace hpfw {
 

@@ -20,7 +20,7 @@
 
 #include "../helpers.h"
 #include "../io/mpg123_wrapper.h"
-#include "core.h"
+#include "hashprint.h"
 
 namespace hpfw {
 
@@ -112,13 +112,13 @@ namespace hpfw {
             auto samples = decoder.decode(filename);
             auto s = calc_spectro(samples);
             auto frames = calc_frames(s);
-            auto fp = calc_delta(filters * frames);
+            auto features = calc_delta(filters * frames);
 
             SearchResult res = {"", 0, 0};
             map<string, map<long long, size_t>> cnt;
 
-            for (long long r = 0, num_rows = fp.rows(); r < num_rows; ++r) {
-                const N n = bool_row_to_num(fp, r);
+            for (long long r = 0, num_rows = features.rows(); r < num_rows; ++r) {
+                const N n = bool_row_to_num(features, r);
 
                 for (const auto &[filename, offset] : db[n]) {
                     long long diff = r - offset;
@@ -161,6 +161,7 @@ namespace hpfw {
         static constexpr size_t W = FramesContext / 2;
         static constexpr size_t NumOfFilters = sizeof(N) * 8;
 
+        // TODO: make generic so CQT or MFCC can be easily used
         using Spectrogram = Matrix<Real, MelBins, Dynamic>;
         using Frames = Matrix<Real, FrameSize, Dynamic, Eigen::RowMajor>;
         using CovarianceMatrix = Matrix<Real, Dynamic, Dynamic>; // to pass static_assert
