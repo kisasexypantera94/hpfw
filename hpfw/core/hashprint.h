@@ -103,17 +103,17 @@ namespace hpfw {
             SearchResult res = {"", 0, 0, 0};
             map<string, map<long long, size_t>> cnt;
 
-            for (long long r = 0, num_rows = fingerprint.rows(); r < num_rows; ++r) {
-                const N n = bool_row_to_num(fingerprint, r);
+            for (long long c = 0, num_cols = fingerprint.cols(); c < num_cols; ++c) {
+                const N n = bool_col_to_num(fingerprint, c);
 
                 for (const auto &[filename, offset] : db[n]) {
-                    long long diff = r - offset;
-                    auto c = ++cnt[filename][diff];
-                    if (c > res.confidence) {
+                    long long diff = c - offset;
+                    auto count = ++cnt[filename][diff];
+                    if (count > res.confidence) {
                         if (filename != res.filename) {
-                            res = {filename, c, 1, diff};
+                            res = {filename, count, 1, diff};
                         } else {
-                            res = {filename, c, res.confidence + 1, diff};
+                            res = {filename, count, res.confidence + 1, diff};
                         }
                     }
                 }
@@ -156,7 +156,7 @@ namespace hpfw {
         using Frames = Eigen::Matrix<Real, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
         using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
         using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
-        using Fingerprint = Eigen::Matrix<bool, Eigen::Dynamic, NumOfFilters>;
+        using Fingerprint = Eigen::Matrix<bool, NumOfFilters, Eigen::Dynamic>;
 
         struct FilenameFramesPair {
             std::string filename;
@@ -254,8 +254,8 @@ namespace hpfw {
         /// Build database. Step 6.
         void build_db(const tbb::concurrent_vector<FilenameFingerprintPair> &fingerprints) {
             for (const auto &[filename, fp]: fingerprints) {
-                for (size_t i = 0, num_rows = fp.rows(); i < num_rows; ++i) {
-                    const N n = bool_row_to_num(fp, i);
+                for (size_t i = 0, num_cols = fp.cols(); i < num_cols; ++i) {
+                    const N n = bool_col_to_num(fp, i);
                     db[n].push_back({filename, i});
                 }
             }
@@ -331,18 +331,18 @@ namespace hpfw {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            Fingerprint fp(f.cols() - T, NumOfFilters);
+            Fingerprint fp(NumOfFilters, f.cols() - T);
             for (size_t i = 0; i < f.cols() - T; ++i) {
-                fp.row(i) = (f.col(i) - f.col(i + T)).array() >= 0;
+                fp.col(i) = (f.col(i) - f.col(i + T)).array() >= 0;
             }
 
             return fp;
         }
 
         /// Pack bool row into integer.
-        static auto bool_row_to_num(const Fingerprint &f, size_t r) -> N {
+        static auto bool_col_to_num(const Fingerprint &f, size_t c) -> N {
             size_t p = 0;
-            return f.row(r).reverse().unaryExpr([&p](bool x) -> N {
+            return f.col(c).reverse().unaryExpr([&p](bool x) -> N {
                 return x * pow(2, p++);
             }).sum();
         }
