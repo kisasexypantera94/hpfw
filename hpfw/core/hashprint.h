@@ -18,28 +18,10 @@
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
 
-#include "../helpers.h"
+#include "../utils.h"
 #include "../io/mpg123_wrapper.h"
-#include "hashprint.h"
 
 namespace hpfw {
-
-    using std::cout;
-    using std::endl;
-    using std::vector;
-    using std::map;
-    using std::unordered_map;
-    using std::string;
-
-    using Eigen::Dynamic;
-    using Eigen::Map;
-    using Eigen::Matrix;
-    using Eigen::SelfAdjointEigenSolver;
-    using tbb::concurrent_vector;
-
-    using namespace hpfw::io;
-    using namespace helpers;
-
 
     /// Algorithm:
     ///
@@ -89,42 +71,50 @@ namespace hpfw {
         ~HashPrint() = default;
 
         /// Process audiofiles, calculate filters and build database.
-        void prepare(const vector<string> &filenames) {
+        void prepare(const std::vector<std::string> &filenames) {
             if (db.size() > 0) {
                 return;
             }
 
-            build_db(calc_features(preprocess(filenames)));
+            build_db(collect_fingerprints(preprocess(filenames)));
         }
 
         struct SearchResult {
-            string filename;
+            std::string filename;
             size_t cnt;
+            size_t confidence;
             long long offset;
         };
 
         /// Process audiofile and find best match in database.
         auto find(const std::string &filename) -> SearchResult {
+            using std::map;
+            using std::string;
+
             std::cout << "FINDING " << filename << std::endl;
 
-            Mpg123Wrapper decoder;
+            hpfw::io::Mpg123Wrapper decoder;
 
             auto samples = decoder.decode(filename);
             auto s = calc_spectro(samples);
             auto frames = calc_frames(s);
-            auto features = calc_delta(filters * frames);
+            auto fingerprint = calc_fingerprint(filters * frames);
 
-            SearchResult res = {"", 0, 0};
+            SearchResult res = {"", 0, 0, 0};
             map<string, map<long long, size_t>> cnt;
 
-            for (long long r = 0, num_rows = features.rows(); r < num_rows; ++r) {
-                const N n = bool_row_to_num(features, r);
+            for (long long r = 0, num_rows = fingerprint.rows(); r < num_rows; ++r) {
+                const N n = bool_row_to_num(fingerprint, r);
 
                 for (const auto &[filename, offset] : db[n]) {
                     long long diff = r - offset;
                     auto c = ++cnt[filename][diff];
-                    if (c > res.cnt) {
-                        res = {filename, c, diff};
+                    if (c > res.confidence) {
+                        if (filename != res.filename) {
+                            res = {filename, c, 1, diff};
+                        } else {
+                            res = {filename, c, res.confidence + 1, diff};
+                        }
                     }
                 }
             }
@@ -133,7 +123,7 @@ namespace hpfw {
         }
 
         /// Dump database and filters.
-        auto dump(const std::optional<string> &filename) const -> string {
+        auto dump(const std::optional<std::string> &filename) const -> std::string {
             const auto dump_name = filename.value_or("db/dump.cereal");
             {
                 std::ofstream os(dump_name, std::ios::binary);
@@ -162,24 +152,24 @@ namespace hpfw {
         static constexpr size_t NumOfFilters = sizeof(N) * 8;
 
         // TODO: make generic so CQT or MFCC can be easily used
-        using Spectrogram = Matrix<Real, MelBins, Dynamic>;
-        using Frames = Matrix<Real, FrameSize, Dynamic, Eigen::RowMajor>;
-        using CovarianceMatrix = Matrix<Real, Dynamic, Dynamic>; // to pass static_assert
-        using Filters = Matrix<Real, NumOfFilters, Dynamic>;
-        using Features = Matrix<bool, Dynamic, NumOfFilters>;
+        using Spectrogram = Eigen::Matrix<Real, MelBins, Eigen::Dynamic>;
+        using Frames = Eigen::Matrix<Real, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
+        using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
+        using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
+        using Fingerprint = Eigen::Matrix<bool, Eigen::Dynamic, NumOfFilters>;
 
         struct FilenameFramesPair {
-            string filename;
+            std::string filename;
             Frames frames;
         };
 
-        struct FilenameFeaturesPair {
-            string filename;
-            Features features;
+        struct FilenameFingerprintPair {
+            std::string filename;
+            Fingerprint fingerprint;
         };
 
         struct FilenameOffsetPair {
-            string filename;
+            std::string filename;
             size_t offset;
 
             template<class Archive>
@@ -195,26 +185,29 @@ namespace hpfw {
             }
         };
 
-        using DB = unordered_map<N, vector<FilenameOffsetPair>>;
+        using DB = std::unordered_map<N, std::vector<FilenameOffsetPair>>;
 
         tf::Executor executor;
         Filters filters;
         DB db;
 
         /// Calculate frames and filters. Steps 1-3.
-        auto preprocess(const vector<string> &filenames) -> concurrent_vector<FilenameFramesPair> {
+        auto preprocess(const std::vector<std::string> &filenames) -> tbb::concurrent_vector<FilenameFramesPair> {
+            using std::cout;
+            using std::endl;
+
             cout << "|----------------------------------------------|" << endl;
             cout << "|Calculating spectrograms and covariance matrix|" << endl;
             cout << "|----------------------------------------------|" << endl;
             CovarianceMatrix accum_cov(FrameSize, FrameSize);
-            concurrent_vector<FilenameFramesPair> frames;
+            tbb::concurrent_vector<FilenameFramesPair> frames;
             std::mutex mtx;
 
             tf::Taskflow taskflow;
             taskflow.parallel_for(filenames.cbegin(), filenames.cend(),
-                                  [&frames, &accum_cov, &mtx](const string &filename) {
+                                  [&frames, &accum_cov, &mtx](const std::string &filename) {
                                       try {
-                                          const auto samples = Mpg123Wrapper().decode(filename);
+                                          const auto samples = hpfw::io::Mpg123Wrapper().decode(filename);
                                           const auto spectrogram = calc_spectro(samples);
                                           const auto f = frames.push_back({filename, calc_frames(spectrogram)});
                                           const auto cov = calc_cov(f->frames.transpose());
@@ -235,37 +228,40 @@ namespace hpfw {
             return frames;
         }
 
-        /// Calculate features. Steps 3-5.
+        /// Collect fingerprints. Steps 3-5.
         template<typename Iterable>
-        auto calc_features(const Iterable &frames) -> concurrent_vector<FilenameFeaturesPair> {
+        auto collect_fingerprints(const Iterable &frames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
+            using std::cout;
+            using std::endl;
+
             cout << "|----------------------------------------------|" << endl;
             cout << "|            Calculating features              |" << endl;
             cout << "|----------------------------------------------|" << endl;
-            concurrent_vector<FilenameFeaturesPair> features;
+            tbb::concurrent_vector<FilenameFingerprintPair> fingerprints;
             tf::Taskflow taskflow;
             taskflow.parallel_for(
                     frames.cbegin(), frames.cend(),
-                    [this, &features](const FilenameFramesPair &f) {
-                        features.push_back({f.filename, calc_delta(filters * f.frames)});
+                    [this, &fingerprints](const FilenameFramesPair &f) {
+                        fingerprints.push_back({f.filename, calc_fingerprint(filters * f.frames)});
                     }
             );
 
             executor.run(taskflow).wait();
 
-            return features;
+            return fingerprints;
         }
 
         /// Build database. Step 6.
-        void build_db(const concurrent_vector<FilenameFeaturesPair> &features_vec) {
-            for (const auto &[filename, features]: features_vec) {
-                for (size_t i = 0, num_rows = features.rows(); i < num_rows; ++i) {
-                    const N n = bool_row_to_num(features, i);
+        void build_db(const tbb::concurrent_vector<FilenameFingerprintPair> &fingerprints) {
+            for (const auto &[filename, fp]: fingerprints) {
+                for (size_t i = 0, num_rows = fp.rows(); i < num_rows; ++i) {
+                    const N n = bool_row_to_num(fp, i);
                     db[n].push_back({filename, i});
                 }
             }
         }
 
-        static auto calc_spectro(const vector<float> &samples) -> Spectrogram {
+        static auto calc_spectro(const std::vector<float> &samples) -> Spectrogram {
             MFCC<Real> mfcc(static_cast<int>(NFFT), 44100);
             Gist<Real> gist(static_cast<int>(NFFT), 44100);
             mfcc.setNumCoefficients(static_cast<int>(MelBins));
@@ -280,8 +276,7 @@ namespace hpfw {
                        gist.processAudioFrame({from, to});
                        mfcc.calculateMelFrequencySpectrum(gist.getMagnitudeSpectrum());
 
-                       spectrogram.col(cnt) = Matrix<Real, MelBins, 1>::Map(mfcc.melSpectrum.data());
-                       ++cnt;
+                       spectrogram.col(cnt++) = Eigen::Matrix<Real, MelBins, 1>::Map(mfcc.melSpectrum.data());
                    }
             );
 
@@ -296,9 +291,13 @@ namespace hpfw {
         }
 
         static auto calc_frames(const Spectrogram &spectrogram) -> Frames {
+            using Eigen::Matrix;
+            using Eigen::Dynamic;
+            using Eigen::RowMajor;
+
             Frames frames(FrameSize, spectrogram.cols() - 2 * W + 1);
             for (size_t i = W, cnt = 0; i < spectrogram.cols() - W + 1; ++i, ++cnt) {
-                Matrix<Real, Dynamic, Dynamic, Eigen::RowMajor> x = spectrogram.block(0, i - W, MelBins, FramesContext);
+                Matrix<Real, Dynamic, Dynamic, RowMajor> x = spectrogram.block(0, i - W, MelBins, FramesContext);
                 x.resize(FrameSize, 1);
 
                 frames.col(cnt) = std::move(x);
@@ -307,34 +306,43 @@ namespace hpfw {
             return frames;
         }
 
-        static auto calc_cov(const Eigen::Ref<Matrix<Real, Dynamic, Dynamic>> &mat) -> CovarianceMatrix {
+        static auto calc_cov(const Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
+            using Eigen::Matrix;
+            using Eigen::Dynamic;
+
             const Matrix<Real, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
             return (centered.adjoint() * centered) / double(mat.rows() - 1);
         }
 
         /// Find top N eigen vectors - these are the filters.
         static auto calc_filters(const CovarianceMatrix &cov) -> Filters {
+            using std::cout;
+            using std::endl;
+
             cout << "|----------------------------------------------|" << endl;
             cout << "|             Calculating filters              |" << endl;
             cout << "|----------------------------------------------|" << endl;
-            SelfAdjointEigenSolver<CovarianceMatrix> solver(cov);
+            Eigen::SelfAdjointEigenSolver<CovarianceMatrix> solver(cov);
             return solver.eigenvectors().rowwise().reverse().transpose().block(0, 0, NumOfFilters, FrameSize);
         }
 
         /// Calculate deltas and apply threshold.
-        static auto calc_delta(const Matrix<Real, NumOfFilters, Dynamic> &f) -> Features {
-            Matrix<bool, Dynamic, NumOfFilters> delta(f.cols() - T, NumOfFilters);
+        static auto calc_fingerprint(const Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
+            using Eigen::Matrix;
+            using Eigen::Dynamic;
+
+            Fingerprint fp(f.cols() - T, NumOfFilters);
             for (size_t i = 0; i < f.cols() - T; ++i) {
-                delta.row(i) = (f.col(i) - f.col(i + T)).array() >= 0;
+                fp.row(i) = (f.col(i) - f.col(i + T)).array() >= 0;
             }
 
-            return delta;
+            return fp;
         }
 
         /// Pack bool row into integer.
-        static auto bool_row_to_num(const Features &f, size_t r) -> N {
+        static auto bool_row_to_num(const Fingerprint &f, size_t r) -> N {
             size_t p = 0;
-            return f.row(r).reverse().unaryExpr([&p](bool x) {
+            return f.row(r).reverse().unaryExpr([&p](bool x) -> N {
                 return x * pow(2, p++);
             }).sum();
         }

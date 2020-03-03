@@ -1,12 +1,10 @@
 #pragma once
 
-#include <fstream>
-
 #include <cereal/cereal.hpp>
 #include <cereal/archives/binary.hpp>
 #include <Eigen/Dense>
 
-namespace helpers {
+namespace {
 
     template<typename Iterator, typename Func>
     auto chunks(Iterator begin, Iterator end, long k, long hop_length, Func f) {
@@ -22,7 +20,7 @@ namespace helpers {
         }
     }
 
-} // helpers
+} // utils
 
 namespace cereal {
 

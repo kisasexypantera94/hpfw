@@ -9,8 +9,6 @@
 
 namespace hpfw::io {
 
-    std::once_flag flag;
-
     class Mpg123Wrapper {
     public:
         Mpg123Wrapper();
@@ -20,6 +18,7 @@ namespace hpfw::io {
         auto decode(const std::string &filename) -> std::vector<float>;
 
     private:
+        static inline std::once_flag flag;
         static void init();
 
         static constexpr size_t part_size = 1024;
@@ -27,13 +26,15 @@ namespace hpfw::io {
     };
 
     void Mpg123Wrapper::init() {
-        if (mpg123_init() != MPG123_OK) {
-            std::throw_with_nested(std::runtime_error("error initializing mpg123_init"));
-        }
+        std::call_once(flag, [] {
+            if (mpg123_init() != MPG123_OK) {
+                std::throw_with_nested(std::runtime_error("error initializing mpg123_init"));
+            }
+        });
     }
 
     Mpg123Wrapper::Mpg123Wrapper() {
-        std::call_once(flag, init);
+        init();
 
         mh = mpg123_new(nullptr, nullptr);
         if (mh == nullptr) {
