@@ -20,6 +20,25 @@ namespace {
         }
     }
 
+    template<typename T>
+    struct extract_value_type {
+        using value_type = T;
+    };
+
+    template<
+            template<typename, size_t, size_t, size_t, size_t, size_t, typename> class X,
+            typename N,
+            size_t FC,
+            size_t MB,
+            size_t NF,
+            size_t HL,
+            size_t T,
+            typename R
+    >
+    struct extract_value_type<X<N, FC, MB, NF, HL, T, R>> {
+        using value_type = N;
+    };
+
 } // utils
 
 namespace cereal {

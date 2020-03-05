@@ -25,6 +25,7 @@ int main() {
 
     hpfw::AudioCombiner combiner;
     combiner.combine(files);
+    combiner.save(nullopt);
 
     return 0;
 }

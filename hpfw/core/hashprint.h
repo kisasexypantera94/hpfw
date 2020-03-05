@@ -55,95 +55,44 @@ namespace hpfw {
     template<typename N = uint16_t,
             size_t FramesContext = 32,
             size_t MelBins = 33,
-            size_t NFFT = 44100 / 10, // TODO: 44100 -> file sample rate
-            size_t HopLength = 44100 / 100,
+            size_t NFFT = 44100 * 100 / 1000, // TODO: 44100 -> file sample rate
+            size_t HopLength = 44100 * 10 / 1000,
             size_t T = 1,
             typename Real = double>
     class HashPrint {
     public:
-        HashPrint() {
-            Eigen::initParallel();
-        }
+        HashPrint() { Eigen::initParallel(); }
 
-        HashPrint(HashPrint &&hp) : filters(std::move(hp.filters)),
-                                    db(std::move(hp.db)) {}
+        HashPrint(HashPrint &&hp) : filters(std::move(hp.filters)) {}
 
         ~HashPrint() = default;
 
-        /// Process audiofiles, calculate filters and build database.
-        void prepare(const std::vector<std::string> &filenames) {
-            if (db.size() > 0) {
-                return;
-            }
-
-            build_db(collect_fingerprints(preprocess(filenames)));
-        }
-
-        struct SearchResult {
+        using Fingerprint = std::vector<N>;
+        struct FilenameFingerprintPair {
             std::string filename;
-            size_t cnt;
-            size_t confidence;
-            long long offset;
+            Fingerprint fingerprint;
         };
 
-        /// Process audiofile and find best match in database.
-        auto find(const std::string &filename) -> SearchResult {
-            using std::map;
-            using std::string;
-
-            std::cout << "FINDING " << filename << std::endl;
-
-            hpfw::io::Mpg123Wrapper decoder;
-
-            auto samples = decoder.decode(filename);
-            auto s = calc_spectro(samples);
-            auto frames = calc_frames(s);
-            auto fingerprint = calc_fingerprint(filters * frames);
-
-            SearchResult res = {"", 0, 0, 0};
-            map<string, map<long long, size_t>> cnt;
-
-            for (long long c = 0, num_cols = fingerprint.cols(); c < num_cols; ++c) {
-                const N n = bool_col_to_num(fingerprint, c);
-
-                for (const auto &[filename, offset] : db[n]) {
-                    long long diff = c - offset;
-                    auto count = ++cnt[filename][diff];
-                    if (count > res.confidence) {
-                        if (filename != res.filename) {
-                            res = {filename, count, 1, diff};
-                        } else {
-                            res = {filename, count, res.confidence + 1, diff};
-                        }
-                    }
-                }
-            }
-
-            return res;
+        /// Process audiofiles, calculate filters and return fingerprints.
+        auto prepare(const std::vector<std::string> &filenames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
+            return collect_fingerprints(preprocess(filenames));
         }
 
-        /// Dump database and filters.
-        auto dump(const std::optional<std::string> &filename) const -> std::string {
-            const auto dump_name = filename.value_or("db/dump.cereal");
-            {
-                std::ofstream os(dump_name, std::ios::binary);
-                cereal::BinaryOutputArchive archive(os);
-                archive(db);
-                archive(filters);
-            }
-            return dump_name;
+        auto calc_fingerprint(const std::string &filename) const -> Fingerprint {
+            auto samples = io::Mpg123Wrapper().decode(filename);
+            auto spectro = calc_spectro(samples);
+            auto frames = calc_frames(spectro);
+            return calc_fingerprint(filters * frames);
         }
 
-        /// Create new HashPrint instance from dump.
-        static auto from_dump(const std::string &dump_name) -> HashPrint {
-            HashPrint hp;
-            {
-                std::ifstream is(dump_name, std::ios::binary);
-                cereal::BinaryInputArchive archive(is);
-                archive(hp.db);
-                archive(hp.filters);
-            }
-            return hp;
+        template<class Archive>
+        void save(Archive &ar) const {
+            ar(filters);
+        }
+
+        template<class Archive>
+        void load(Archive &ar) {
+            ar(filters);
         }
 
     private:
@@ -156,40 +105,14 @@ namespace hpfw {
         using Frames = Eigen::Matrix<Real, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
         using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
         using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
-        using Fingerprint = Eigen::Matrix<bool, NumOfFilters, Eigen::Dynamic>;
 
         struct FilenameFramesPair {
             std::string filename;
             Frames frames;
         };
 
-        struct FilenameFingerprintPair {
-            std::string filename;
-            Fingerprint fingerprint;
-        };
-
-        struct FilenameOffsetPair {
-            std::string filename;
-            size_t offset;
-
-            template<class Archive>
-            void save(Archive &ar) const {
-                ar(filename);
-                ar(offset);
-            }
-
-            template<class Archive>
-            void load(Archive &ar) {
-                ar(filename);
-                ar(offset);
-            }
-        };
-
-        using DB = std::unordered_map<N, std::vector<FilenameOffsetPair>>;
-
         tf::Executor executor;
         Filters filters;
-        DB db;
 
         /// Calculate frames and filters. Steps 1-3.
         auto preprocess(const std::vector<std::string> &filenames) -> tbb::concurrent_vector<FilenameFramesPair> {
@@ -204,22 +127,24 @@ namespace hpfw {
             std::mutex mtx;
 
             tf::Taskflow taskflow;
-            taskflow.parallel_for(filenames.cbegin(), filenames.cend(),
-                                  [&frames, &accum_cov, &mtx](const std::string &filename) {
-                                      try {
-                                          const auto samples = hpfw::io::Mpg123Wrapper().decode(filename);
-                                          const auto spectrogram = calc_spectro(samples);
-                                          const auto f = frames.push_back({filename, calc_frames(spectrogram)});
-                                          const auto cov = calc_cov(f->frames.transpose());
-                                          {
-                                              std::scoped_lock lock(mtx);
-                                              std::cout << filename << std::endl;
-                                              accum_cov += cov;
-                                          }
-                                      } catch (const std::exception &e) {
-                                          std::cerr << e.what() << std::endl;
-                                      }
-                                  });
+            taskflow.parallel_for(
+                    filenames.cbegin(), filenames.cend(),
+                    [&frames, &accum_cov, &mtx](const std::string &filename) {
+                        try {
+                            const auto samples = hpfw::io::Mpg123Wrapper().decode(filename);
+                            const auto spectro = calc_spectro(samples);
+                            const auto f = frames.push_back({filename, calc_frames(spectro)});
+                            const auto cov = calc_cov(f->frames.transpose());
+                            {
+                                std::scoped_lock lock(mtx);
+                                std::cout << filename << std::endl;
+                                accum_cov += cov;
+                            }
+                        } catch (const std::exception &e) {
+                            std::cerr << e.what() << std::endl;
+                        }
+                    }
+            );
 
             executor.run(taskflow).wait();
 
@@ -228,7 +153,7 @@ namespace hpfw {
             return frames;
         }
 
-        /// Collect fingerprints. Steps 3-5.
+        /// Collect fingerprints. Steps 3-6.
         template<typename Iterable>
         auto collect_fingerprints(const Iterable &frames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
             using std::cout;
@@ -251,15 +176,6 @@ namespace hpfw {
             return fingerprints;
         }
 
-        /// Build database. Step 6.
-        void build_db(const tbb::concurrent_vector<FilenameFingerprintPair> &fingerprints) {
-            for (const auto &[filename, fp]: fingerprints) {
-                for (size_t i = 0, num_cols = fp.cols(); i < num_cols; ++i) {
-                    const N n = bool_col_to_num(fp, i);
-                    db[n].push_back({filename, i});
-                }
-            }
-        }
 
         static auto calc_spectro(const std::vector<float> &samples) -> Spectrogram {
             MFCC<Real> mfcc(static_cast<int>(NFFT), 44100);
@@ -277,8 +193,7 @@ namespace hpfw {
                        mfcc.calculateMelFrequencySpectrum(gist.getMagnitudeSpectrum());
 
                        spectrogram.col(cnt++) = Eigen::Matrix<Real, MelBins, 1>::Map(mfcc.melSpectrum.data());
-                   }
-            );
+                   });
 
             double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
             spectrogram = 10.0 * (spectrogram.array() < 1e-10).select(1e-10, spectrogram).array().log10()
@@ -331,18 +246,18 @@ namespace hpfw {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            Fingerprint fp(NumOfFilters, f.cols() - T);
+            Fingerprint fp(f.cols() - T);
             for (size_t i = 0; i < f.cols() - T; ++i) {
-                fp.col(i) = (f.col(i) - f.col(i + T)).array() >= 0;
+                fp[i] = bool_col_to_num((f.col(i) - f.col(i + T)).array() >= 0);
             }
 
             return fp;
         }
 
-        /// Pack bool row into integer.
-        static auto bool_col_to_num(const Fingerprint &f, size_t c) -> N {
+        /// Pack bool column into integer.
+        static auto bool_col_to_num(const Eigen::Matrix<bool, NumOfFilters, 1> &c) -> N {
             size_t p = 0;
-            return f.col(c).reverse().unaryExpr([&p](bool x) -> N {
+            return c.reverse().unaryExpr([&p](bool x) -> N {
                 return x * pow(2, p++);
             }).sum();
         }
