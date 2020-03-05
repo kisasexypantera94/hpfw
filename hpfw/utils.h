@@ -25,6 +25,7 @@ namespace {
         using value_type = T;
     };
 
+    /// extract hashprint type from HashPrint
     template<
             template<typename, size_t, size_t, size_t, size_t, size_t, typename> class X,
             typename N,

@@ -8,6 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_definitions(
         -DUSE_FFTW
+        -DEIGEN_USE_MKL_ALL
+
+        -m64
+
         -ffast-math
         -Ofast
         -march=native
@@ -31,35 +35,19 @@ add_definitions(
         -Wno-unused
 )
 
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 include_directories(
         SYSTEM
 
         /usr/local/include
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/include
+
         thirdparty/Gist/src
         thirdparty/cpp-taskflow-2.2.0
 )
 
 link_directories(/usr/local/lib)
-
-link_libraries(
-        mpg123
-        fftw3
-        tbb
-)
-
-add_library(
-        Gist STATIC
-
-        thirdparty/Gist/src/core/CoreFrequencyDomainFeatures.cpp
-        thirdparty/Gist/src/core/CoreTimeDomainFeatures.cpp
-        thirdparty/Gist/src/mfcc/MFCC.cpp
-        thirdparty/Gist/src/onset-detection-functions/OnsetDetectionFunction.cpp
-        thirdparty/Gist/src/fft/WindowFunctions.cpp
-        thirdparty/Gist/src/pitch/Yin.cpp
-        thirdparty/Gist/src/Gist.cpp
-)
-
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 add_executable(
         hpfw
@@ -67,4 +55,24 @@ add_executable(
         main.cpp
 )
 
-target_link_libraries(hpfw Gist Eigen3::Eigen)
+target_link_libraries(
+        hpfw
+
+        Eigen3::Eigen
+        mpg123
+        fftw3
+        tbb
+        essentia
+
+        # MKL RELATED
+        pthread
+        m
+        dl
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_intel_lp64.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_sequential.a
+        #        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_intel_thread.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_core.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_blacs_mpich_lp64.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_scalapack_ilp64.a
+        #        /opt/intel/compilers_and_libraries_2020.0.166/mac/compiler/lib/libiomp5.a
+)

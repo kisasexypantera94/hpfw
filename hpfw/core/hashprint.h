@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -14,12 +15,12 @@
 #include <cereal/cereal.hpp>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
-#include <Gist.h>
+#include <essentia/algorithmfactory.h>
+#include <essentia/essentiamath.h>
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
 
 #include "../utils.h"
-#include "../io/mpg123_wrapper.h"
 
 namespace hpfw {
 
@@ -58,14 +59,19 @@ namespace hpfw {
             size_t NFFT = 44100 * 100 / 1000, // TODO: 44100 -> file sample rate
             size_t HopLength = 44100 * 10 / 1000,
             size_t T = 1,
-            typename Real = double>
+            typename Real = float>
     class HashPrint {
     public:
-        HashPrint() { Eigen::initParallel(); }
+        HashPrint() {
+            Eigen::initParallel();
+            essentia::init();
+        }
 
         HashPrint(HashPrint &&hp) : filters(std::move(hp.filters)) {}
 
-        ~HashPrint() = default;
+        ~HashPrint() {
+            essentia::shutdown();
+        }
 
         using Fingerprint = std::vector<N>;
         struct FilenameFingerprintPair {
@@ -79,8 +85,7 @@ namespace hpfw {
         }
 
         auto calc_fingerprint(const std::string &filename) const -> Fingerprint {
-            auto samples = io::Mpg123Wrapper().decode(filename);
-            auto spectro = calc_spectro(samples);
+            auto spectro = calc_spectro(filename);
             auto frames = calc_frames(spectro);
             return calc_fingerprint(filters * frames);
         }
@@ -111,7 +116,6 @@ namespace hpfw {
             Frames frames;
         };
 
-        tf::Executor executor;
         Filters filters;
 
         /// Calculate frames and filters. Steps 1-3.
@@ -131,14 +135,13 @@ namespace hpfw {
                     filenames.cbegin(), filenames.cend(),
                     [&frames, &accum_cov, &mtx](const std::string &filename) {
                         try {
-                            const auto samples = hpfw::io::Mpg123Wrapper().decode(filename);
-                            const auto spectro = calc_spectro(samples);
+                            const auto spectro = calc_spectro(filename);
                             const auto f = frames.push_back({filename, calc_frames(spectro)});
                             const auto cov = calc_cov(f->frames.transpose());
                             {
                                 std::scoped_lock lock(mtx);
                                 std::cout << filename << std::endl;
-                                accum_cov += cov;
+                                accum_cov.noalias() += cov;
                             }
                         } catch (const std::exception &e) {
                             std::cerr << e.what() << std::endl;
@@ -146,6 +149,7 @@ namespace hpfw {
                     }
             );
 
+            tf::Executor executor;
             executor.run(taskflow).wait();
 
             filters = calc_filters(accum_cov / frames.size());
@@ -155,7 +159,7 @@ namespace hpfw {
 
         /// Collect fingerprints. Steps 3-6.
         template<typename Iterable>
-        auto collect_fingerprints(const Iterable &frames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
+        auto collect_fingerprints(const Iterable &frames) const -> tbb::concurrent_vector<FilenameFingerprintPair> {
             using std::cout;
             using std::endl;
 
@@ -171,29 +175,82 @@ namespace hpfw {
                     }
             );
 
+            tf::Executor executor;
             executor.run(taskflow).wait();
 
             return fingerprints;
         }
 
 
-        static auto calc_spectro(const std::vector<float> &samples) -> Spectrogram {
-            MFCC<Real> mfcc(static_cast<int>(NFFT), 44100);
-            Gist<Real> gist(static_cast<int>(NFFT), 44100);
-            mfcc.setNumCoefficients(static_cast<int>(MelBins));
+        static auto calc_spectro(const std::string &filename) -> Spectrogram {
+            using namespace essentia;
+            using namespace essentia::standard;
+            using std::vector;
+            using uptr = std::unique_ptr<Algorithm>;
 
-            Spectrogram spectrogram(MelBins, samples.size() / HopLength);
+            AlgorithmFactory &factory = standard::AlgorithmFactory::instance();
 
-            chunks(samples.cbegin(),
-                   samples.cend(),
-                   NFFT,
-                   HopLength,
-                   [&gist, &mfcc, &spectrogram, cnt = 0](auto from, auto to) mutable {
-                       gist.processAudioFrame({from, to});
-                       mfcc.calculateMelFrequencySpectrum(gist.getMagnitudeSpectrum());
+            auto audio = uptr(factory.create("MonoLoader",
+                                             "filename", filename,
+                                             "sampleRate", 44100));
 
-                       spectrogram.col(cnt++) = Eigen::Matrix<Real, MelBins, 1>::Map(mfcc.melSpectrum.data());
-                   });
+            auto fc = uptr(factory.create("FrameCutter",
+                                          "frameSize", int(NFFT),
+                                          "hopSize", int(HopLength)));
+
+            auto w = uptr(factory.create("Windowing",
+                                         "type", "hann"));
+
+            auto spec = uptr(factory.create("Spectrum"));
+
+            auto melbands = uptr(factory.create("MelBands",
+                                                "inputSize", 2206,
+                                                "numberBands", int(MelBins)));
+
+            // MonoLoader -> FrameCutter -> Windowing -> Spectrum -> MelBands
+            vector<float> audioBuffer;
+            audio->output("audio").set(audioBuffer);
+
+            vector<float> frame, windowedFrame;
+            fc->input("signal").set(audioBuffer);
+            fc->output("frame").set(frame);
+
+            w->input("frame").set(frame);
+            w->output("frame").set(windowedFrame);
+
+            vector<float> spectrum, bands;
+            spec->input("frame").set(windowedFrame);
+            spec->output("spectrum").set(spectrum);
+
+            melbands->input("spectrum").set(spectrum);
+            melbands->output("bands").set(bands);
+
+
+            audio->compute();
+
+            Spectrogram spectrogram(MelBins, 0);
+            while (true) {
+
+                // compute a frame
+                fc->compute();
+
+                // if it was the last one (ie: it was empty), then we're done.
+                if (frame.empty()) {
+                    break;
+                }
+
+                // if the frame is silent, just drop it and go on processing
+                if (isSilent(frame)) {
+                    continue;
+                }
+
+                w->compute();
+                spec->compute();
+                melbands->compute();
+
+                spectrogram.conservativeResize(spectrogram.rows(), spectrogram.cols() + 1);
+                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<Real, MelBins, 1>::Map(bands.data());
+            }
 
             double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
             spectrogram = 10.0 * (spectrogram.array() < 1e-10).select(1e-10, spectrogram).array().log10()
@@ -225,7 +282,7 @@ namespace hpfw {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            const Matrix<Real, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
+            Matrix<Real, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
             return (centered.adjoint() * centered) / double(mat.rows() - 1);
         }
 

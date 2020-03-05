@@ -1,3 +1,5 @@
+#define NDEBUG
+
 #include <filesystem>
 #include <iostream>
 
