@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -20,6 +21,7 @@
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
 
+#include "../spectrum/spectrogram.h"
 #include "../utils.h"
 
 namespace hpfw {
@@ -53,12 +55,10 @@ namespace hpfw {
     /// 6. Bit packing. The N binary values are packed into a single 32-bit or 64-bit integer which represents the
     /// hashprint value for a single frame. This compact binary representation will allow us to store fingerprints
     /// in memory efficiently, do reverse indexing, or compute Hamming distance between hashprints very quickly.
-    template<typename N = uint16_t,
-            size_t FramesContext = 32,
-            size_t MelBins = 33,
-            size_t NFFT = 44100 * 100 / 1000, // TODO: 44100 -> file sample rate
-            size_t HopLength = 44100 * 10 / 1000,
-            size_t T = 1,
+    template<typename N,
+            auto calc_spectro, // TODO: not sure about this, maybe pack spectrogram logic into handler class
+            size_t FramesContext,
+            size_t T,
             typename Real = float>
     class HashPrint {
     public:
@@ -79,7 +79,7 @@ namespace hpfw {
             Fingerprint fingerprint;
         };
 
-        /// Process audiofiles, calculate filters and return fingerprints.
+        /// Process audiofiles, calculate filters.
         auto prepare(const std::vector<std::string> &filenames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
             return collect_fingerprints(preprocess(filenames));
         }
@@ -101,15 +101,15 @@ namespace hpfw {
         }
 
     private:
-        static constexpr size_t FrameSize = MelBins * FramesContext;
+        using Spectrogram = decltype(calc_spectro("filename.ext"));
+        static constexpr size_t SpectroRows = Spectrogram::RowsAtCompileTime;
+        static constexpr size_t FrameSize = SpectroRows * FramesContext;
         static constexpr size_t W = FramesContext / 2;
         static constexpr size_t NumOfFilters = sizeof(N) * 8;
 
-        // TODO: make generic so CQT or MFCC can be easily used
-        using Spectrogram = Eigen::Matrix<Real, MelBins, Eigen::Dynamic>;
-        using Frames = Eigen::Matrix<Real, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
-        using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
-        using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
+        using Frames = Eigen::Matrix<float, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
+        using CovarianceMatrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
+        using Filters = Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic>;
 
         struct FilenameFramesPair {
             std::string filename;
@@ -181,95 +181,14 @@ namespace hpfw {
             return fingerprints;
         }
 
-
-        static auto calc_spectro(const std::string &filename) -> Spectrogram {
-            using namespace essentia;
-            using namespace essentia::standard;
-            using std::vector;
-            using uptr = std::unique_ptr<Algorithm>;
-
-            AlgorithmFactory &factory = standard::AlgorithmFactory::instance();
-
-            auto audio = uptr(factory.create("MonoLoader",
-                                             "filename", filename,
-                                             "sampleRate", 44100));
-
-            auto fc = uptr(factory.create("FrameCutter",
-                                          "frameSize", int(NFFT),
-                                          "hopSize", int(HopLength)));
-
-            auto w = uptr(factory.create("Windowing",
-                                         "type", "hann"));
-
-            auto spec = uptr(factory.create("Spectrum"));
-
-            auto melbands = uptr(factory.create("MelBands",
-                                                "inputSize", 2206,
-                                                "numberBands", int(MelBins)));
-
-            // MonoLoader -> FrameCutter -> Windowing -> Spectrum -> MelBands
-            vector<float> audioBuffer;
-            audio->output("audio").set(audioBuffer);
-
-            vector<float> frame, windowedFrame;
-            fc->input("signal").set(audioBuffer);
-            fc->output("frame").set(frame);
-
-            w->input("frame").set(frame);
-            w->output("frame").set(windowedFrame);
-
-            vector<float> spectrum, bands;
-            spec->input("frame").set(windowedFrame);
-            spec->output("spectrum").set(spectrum);
-
-            melbands->input("spectrum").set(spectrum);
-            melbands->output("bands").set(bands);
-
-
-            audio->compute();
-
-            Spectrogram spectrogram(MelBins, 0);
-            while (true) {
-
-                // compute a frame
-                fc->compute();
-
-                // if it was the last one (ie: it was empty), then we're done.
-                if (frame.empty()) {
-                    break;
-                }
-
-                // if the frame is silent, just drop it and go on processing
-                if (isSilent(frame)) {
-                    continue;
-                }
-
-                w->compute();
-                spec->compute();
-                melbands->compute();
-
-                spectrogram.conservativeResize(spectrogram.rows(), spectrogram.cols() + 1);
-                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<Real, MelBins, 1>::Map(bands.data());
-            }
-
-            double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
-            spectrogram = 10.0 * (spectrogram.array() < 1e-10).select(1e-10, spectrogram).array().log10()
-                          - 10.0 * log10(maxVal);
-
-            maxVal = spectrogram.maxCoeff();
-            spectrogram = (spectrogram.array() < (maxVal - 80.0)).select(maxVal - 80.0, spectrogram);
-
-            return spectrogram;
-        }
-
-        static auto calc_frames(const Spectrogram &spectrogram) -> Frames {
+        static auto calc_frames(const Spectrogram &spectro) -> Frames {
             using Eigen::Matrix;
             using Eigen::Dynamic;
             using Eigen::RowMajor;
 
-            Frames frames(FrameSize, spectrogram.cols() - 2 * W + 1);
-            for (size_t i = W, cnt = 0; i < spectrogram.cols() - W + 1; ++i, ++cnt) {
-                Matrix<Real, Dynamic, Dynamic, RowMajor> x = spectrogram.block(0, i - W, MelBins, FramesContext);
+            Frames frames(FrameSize, spectro.cols() - 2 * W + 1);
+            for (size_t i = W, cnt = 0; i < spectro.cols() - W + 1; ++i, ++cnt) {
+                Matrix<float, Dynamic, Dynamic, RowMajor> x = spectro.block(0, i - W, SpectroRows, FramesContext);
                 x.resize(FrameSize, 1);
 
                 frames.col(cnt) = std::move(x);
@@ -278,11 +197,11 @@ namespace hpfw {
             return frames;
         }
 
-        static auto calc_cov(const Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
+        static auto calc_cov(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            Matrix<Real, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
+            Matrix<float, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
             return (centered.adjoint() * centered) / double(mat.rows() - 1);
         }
 
@@ -299,7 +218,7 @@ namespace hpfw {
         }
 
         /// Calculate deltas and apply threshold.
-        static auto calc_fingerprint(const Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
+        static auto calc_fingerprint(const Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 

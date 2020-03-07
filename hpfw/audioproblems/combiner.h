@@ -3,12 +3,15 @@
 #include <vector>
 #include <filesystem>
 
-#include "../utils.h"
 #include "../core/hashprint.h"
+#include "../spectrum/spectrogram.h"
+#include "../utils.h"
 
 namespace hpfw {
 
-    template<typename Algo = HashPrint<>>
+    using DefaultCombinerConfig = HashPrint<uint16_t, spectrum::melspectrogram<>, 32, 50>;
+
+    template<typename Algo = DefaultCombinerConfig>
     class AudioCombiner {
     public:
         AudioCombiner() = default;
@@ -22,14 +25,8 @@ namespace hpfw {
                 build_db(algo.prepare(filenames));
             }
 
-            auto it = std::filesystem::directory_iterator("/Users/chingachgook/dev/rust/khalzam/samples");
-            for (const auto &f : it) {
-                const auto &filename = f.path();
-                if (filename.extension() != ".mp3") {
-                    continue;
-                }
-
-                auto res = find(filename);
+            for (const auto &f : filenames) {
+                auto res = find(f);
                 std::cout << res.filename << " " << res.cnt << " " << res.confidence << " " << res.offset << std::endl
                           << std::endl;
             }
@@ -115,14 +112,17 @@ namespace hpfw {
             for (long long c = 0, num_cols = fingerprint.size(); c < num_cols; ++c) {
                 const N n = fingerprint[c];
 
-                for (const auto &[filename, offset] : db[n]) {
+                for (const auto &[fname, offset] : db[n]) {
+                    if (fname == filename) {
+                        continue;
+                    }
                     long long diff = c - offset;
-                    auto count = ++cnt[filename][diff];
+                    auto count = ++cnt[fname][diff];
                     if (count > res.confidence) {
-                        if (filename != res.filename) {
-                            res = {filename, count, 1, diff};
+                        if (fname != res.filename) {
+                            res = {fname, count, 1, diff};
                         } else {
-                            res = {filename, count, res.confidence + 1, diff};
+                            res = {fname, count, res.confidence + 1, diff};
                         }
                     }
                 }

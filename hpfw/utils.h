@@ -27,16 +27,14 @@ namespace {
 
     /// extract hashprint type from HashPrint
     template<
-            template<typename, size_t, size_t, size_t, size_t, size_t, typename> class X,
+            template<typename, auto, size_t, size_t, typename> class X,
             typename N,
+            auto SP,
             size_t FC,
-            size_t MB,
-            size_t NF,
-            size_t HL,
             size_t T,
             typename R
     >
-    struct extract_value_type<X<N, FC, MB, NF, HL, T, R>> {
+    struct extract_value_type<X<N, SP, FC, T, R>> {
         using value_type = N;
     };
 
@@ -46,7 +44,9 @@ namespace cereal {
 
     template<class Archive, class _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
-    typename std::enable_if<traits::is_output_serializable<BinaryData<_Scalar>, Archive>::value, void>::type
+    typename std::enable_if<traits::is_output_serializable < BinaryData < _Scalar>, Archive>::value, void>
+
+    ::type
     save(Archive &ar, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> const &m) {
         int32_t rows = m.rows();
         int32_t cols = m.cols();
@@ -57,7 +57,9 @@ namespace cereal {
 
     template<class Archive, class _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
-    typename std::enable_if<traits::is_input_serializable<BinaryData<_Scalar>, Archive>::value, void>::type
+    typename std::enable_if<traits::is_input_serializable < BinaryData < _Scalar>, Archive>::value, void>
+
+    ::type
     load(Archive &ar, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> &m) {
         int32_t rows;
         int32_t cols;
