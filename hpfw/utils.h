@@ -27,14 +27,14 @@ namespace {
 
     /// extract hashprint type from HashPrint
     template<
-            template<typename, auto, size_t, size_t, typename> class X,
+            template<typename, typename, size_t, size_t, typename> class X,
             typename N,
-            auto SP,
+            typename SH,
             size_t FC,
             size_t T,
             typename R
     >
-    struct extract_value_type<X<N, SP, FC, T, R>> {
+    struct extract_value_type<X<N, SH, FC, T, R>> {
         using value_type = N;
     };
 

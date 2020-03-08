@@ -55,23 +55,26 @@ namespace hpfw {
     /// 6. Bit packing. The N binary values are packed into a single 32-bit or 64-bit integer which represents the
     /// hashprint value for a single frame. This compact binary representation will allow us to store fingerprints
     /// in memory efficiently, do reverse indexing, or compute Hamming distance between hashprints very quickly.
+    ///
+    /// \tparam N
+    /// \tparam SpectrogramHandler
+    /// \tparam FramesContext
+    /// \tparam T
+    /// \tparam Real
     template<typename N,
-            auto calc_spectro, // TODO: not sure about this, maybe pack spectrogram logic into handler class
+            typename SpectrogramHandler,
             size_t FramesContext,
             size_t T,
-            typename Real = float>
+            typename Real = float> // TODO: seems it is not necessary, remove
     class HashPrint {
     public:
         HashPrint() {
             Eigen::initParallel();
-            essentia::init();
         }
 
         HashPrint(HashPrint &&hp) : filters(std::move(hp.filters)) {}
 
-        ~HashPrint() {
-            essentia::shutdown();
-        }
+        ~HashPrint() = default;
 
         using Fingerprint = std::vector<N>;
         struct FilenameFingerprintPair {
@@ -85,7 +88,7 @@ namespace hpfw {
         }
 
         auto calc_fingerprint(const std::string &filename) const -> Fingerprint {
-            auto spectro = calc_spectro(filename);
+            auto spectro = sh.spectrogram(filename);
             auto frames = calc_frames(spectro);
             return calc_fingerprint(filters * frames);
         }
@@ -101,10 +104,12 @@ namespace hpfw {
         }
 
     private:
-        using Spectrogram = decltype(calc_spectro("filename.ext"));
+        using Spectrogram = typename SpectrogramHandler::Spectrogram;
         static constexpr size_t SpectroRows = Spectrogram::RowsAtCompileTime;
         static constexpr size_t FrameSize = SpectroRows * FramesContext;
+        /// Number of context frames on one side (left or right)
         static constexpr size_t W = FramesContext / 2;
+        /// Number of filters is equal to number of bits in hashprint representation
         static constexpr size_t NumOfFilters = sizeof(N) * 8;
 
         using Frames = Eigen::Matrix<float, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
@@ -116,6 +121,7 @@ namespace hpfw {
             Frames frames;
         };
 
+        const SpectrogramHandler sh;
         Filters filters;
 
         /// Calculate frames and filters. Steps 1-3.
@@ -133,9 +139,9 @@ namespace hpfw {
             tf::Taskflow taskflow;
             taskflow.parallel_for(
                     filenames.cbegin(), filenames.cend(),
-                    [&frames, &accum_cov, &mtx](const std::string &filename) {
+                    [this, &frames, &accum_cov, &mtx](const std::string &filename) {
                         try {
-                            const auto spectro = calc_spectro(filename);
+                            const auto spectro = sh.spectrogram(filename);
                             const auto f = frames.push_back({filename, calc_frames(spectro)});
                             const auto cov = calc_cov(f->frames.transpose());
                             {

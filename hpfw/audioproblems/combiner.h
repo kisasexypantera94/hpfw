@@ -9,9 +9,9 @@
 
 namespace hpfw {
 
-    using DefaultCombinerConfig = HashPrint<uint16_t, spectrum::melspectrogram<>, 32, 50>;
+    using DefaultCombinerAlgoConfig = HashPrint<uint16_t, spectrum::MelSpectrogram<>, 32, 50>;
 
-    template<typename Algo = DefaultCombinerConfig>
+    template<typename Algo = DefaultCombinerAlgoConfig>
     class AudioCombiner {
     public:
         AudioCombiner() = default;
