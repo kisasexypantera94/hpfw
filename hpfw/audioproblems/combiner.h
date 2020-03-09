@@ -4,7 +4,7 @@
 #include <filesystem>
 
 #include "../core/hashprint.h"
-#include "../spectrum/spectrogram.h"
+#include "../spectrum/mel.h"
 #include "../utils.h"
 
 namespace hpfw {
@@ -81,7 +81,7 @@ namespace hpfw {
             long long offset;
         };
 
-        using N = typename extract_value_type<Algo>::value_type;
+        using N = typename utils::extract_value_type<Algo>::value_type;
         using DB = std::unordered_map<N, std::vector<FilenameOffsetPair>>;
 
         DB db;

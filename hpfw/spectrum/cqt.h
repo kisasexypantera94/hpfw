@@ -6,26 +6,30 @@
 
 namespace hpfw::spectrum {
 
-    /// MelSpectrogram is a wrapper class around essentia extractor.
-
+    /// CQT is a wrapper class around essentia extractor.
+    ///
     /// \tparam SampleRate
-    /// \tparam MelBins
     /// \tparam NFFT
     /// \tparam HopLength
+    /// \tparam BinsPerOctave
+    /// \tparam NumberBins
+    /// \tparam MinFrequency
     template<size_t SampleRate = 44100,
-            size_t MelBins = 33,
-            size_t NFFT = SampleRate * 100 / 1000,
-            size_t HopLength = SampleRate * 10 / 1000>
-    class MelSpectrogram {
+            size_t NFFT = 16384, // TODO: play around with parameters
+            size_t HopLength = 2880,
+            size_t BinsPerOctave = 24,
+            size_t NumberBins = 121,
+            float MinFrequency = 130.81> // 130.81 = C3
+    class CQT {
     public:
-        using Spectrogram = Eigen::Matrix<float, MelBins, Eigen::Dynamic>;
+        using Spectrogram = Eigen::Matrix<float, 121, Eigen::Dynamic>;
 
-        MelSpectrogram() {
+        CQT() {
             essentia::init();
         }
 
-        ~MelSpectrogram() {
-            // TODO: unsafe when there is more than one object
+        ~CQT() {
+            // TODO: unsafe when there is more than one object, maybe use abstract class
             essentia::shutdown();
         }
 
@@ -49,14 +53,12 @@ namespace hpfw::spectrum {
                                          "size", int(NFFT),
                                          "type", "hann"));
 
-            auto spec = uptr(factory.create("Spectrum",
-                                            "size", int(NFFT)));
+            auto cqt = uptr(factory.create("SpectrumCQ",
+                                           "binsPerOctave", int(BinsPerOctave),
+                                           "minFrequency", MinFrequency,
+                                           "numberBins", int(NumberBins)));
 
-            auto melbands = uptr(factory.create("MelBands",
-                                                "inputSize", int(NFFT) / 2 + 1,
-                                                "numberBands", int(MelBins)));
-
-            // MonoLoader -> FrameCutter -> Windowing -> Spectrum -> MelBands
+            // MonoLoader -> FrameCutter -> Windowing -> SpectrumCQ
             vector<float> audioBuffer;
             audio->output("audio").set(audioBuffer);
 
@@ -67,17 +69,13 @@ namespace hpfw::spectrum {
             w->input("frame").set(frame);
             w->output("frame").set(windowedFrame);
 
-            vector<float> spectrum, bands;
-            spec->input("frame").set(windowedFrame);
-            spec->output("spectrum").set(spectrum);
-
-            melbands->input("spectrum").set(spectrum);
-            melbands->output("bands").set(bands);
-
+            vector<float> spectrum;
+            cqt->input("frame").set(windowedFrame);
+            cqt->output("spectrumCQ").set(spectrum);
 
             audio->compute();
 
-            Spectrogram spectrogram(MelBins, 0);
+            Spectrogram spectrogram(121, 0);
             while (true) {
 
                 // compute a frame
@@ -94,19 +92,11 @@ namespace hpfw::spectrum {
                 }
 
                 w->compute();
-                spec->compute();
-                melbands->compute();
+                cqt->compute();
 
                 spectrogram.conservativeResize(spectrogram.rows(), spectrogram.cols() + 1);
-                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<Real, MelBins, 1>::Map(bands.data());
+                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<float, 121, 1>::Map(spectrum.data());
             }
-
-            double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
-            spectrogram = 10.0 * (spectrogram.array() < 1e-10).select(1e-10, spectrogram).array().log10()
-                          - 10.0 * log10(maxVal);
-
-            maxVal = spectrogram.maxCoeff();
-            spectrogram = (spectrogram.array() < (maxVal - 80.0)).select(maxVal - 80.0, spectrogram);
 
             return spectrogram;
         }

@@ -4,7 +4,7 @@
 #include <cereal/archives/binary.hpp>
 #include <Eigen/Dense>
 
-namespace {
+namespace hpfw::utils {
 
     template<typename Iterator, typename Func>
     auto chunks(Iterator begin, Iterator end, long k, long hop_length, Func f) {

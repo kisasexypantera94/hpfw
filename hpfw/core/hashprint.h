@@ -16,17 +16,14 @@
 #include <cereal/cereal.hpp>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
-#include <essentia/algorithmfactory.h>
-#include <essentia/essentiamath.h>
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
 
-#include "../spectrum/spectrogram.h"
 #include "../utils.h"
 
 namespace hpfw {
 
-    /// Algorithm:
+    /// Algorithm (taken from Audio Hashprints: Theory & Application):
     ///
     /// 1. Compute spectrogram. The first step is to compute a time-frequency representation of audio.
     /// This time-frequency representation can be selected to suit the characteristics of the problem at hand.
@@ -56,10 +53,10 @@ namespace hpfw {
     /// hashprint value for a single frame. This compact binary representation will allow us to store fingerprints
     /// in memory efficiently, do reverse indexing, or compute Hamming distance between hashprints very quickly.
     ///
-    /// \tparam N
-    /// \tparam SpectrogramHandler
-    /// \tparam FramesContext
-    /// \tparam T
+    /// \tparam N - hashprint representation, integer
+    /// \tparam SpectrogramHandler - provides spectrogram
+    /// \tparam FramesContext - number of context frames used
+    /// \tparam T - time lag
     /// \tparam Real
     template<typename N,
             typename SpectrogramHandler,
@@ -77,9 +74,22 @@ namespace hpfw {
         ~HashPrint() = default;
 
         using Fingerprint = std::vector<N>;
+
         struct FilenameFingerprintPair {
             std::string filename;
             Fingerprint fingerprint;
+
+            template<class Archive>
+            void save(Archive &ar) const {
+                ar(filename);
+                ar(fingerprint);
+            }
+
+            template<class Archive>
+            void load(Archive &ar) {
+                ar(filename);
+                ar(fingerprint);
+            }
         };
 
         /// Process audiofiles, calculate filters.
