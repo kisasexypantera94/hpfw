@@ -18,8 +18,7 @@ namespace hpfw::spectrum {
             size_t NFFT = 16384, // TODO: play around with parameters
             size_t HopLength = 2880,
             size_t BinsPerOctave = 24,
-            size_t NumberBins = 121,
-            float MinFrequency = 130.81> // 130.81 = C3
+            size_t NumberBins = 121>
     class CQT {
     public:
         using Spectrogram = Eigen::Matrix<float, 121, Eigen::Dynamic>;
@@ -55,7 +54,7 @@ namespace hpfw::spectrum {
 
             auto cqt = uptr(factory.create("SpectrumCQ",
                                            "binsPerOctave", int(BinsPerOctave),
-                                           "minFrequency", MinFrequency,
+                                           "minFrequency", 130.81,
                                            "numberBins", int(NumberBins)));
 
             // MonoLoader -> FrameCutter -> Windowing -> SpectrumCQ
