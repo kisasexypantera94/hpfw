@@ -62,7 +62,7 @@ namespace hpfw {
             typename SpectrogramHandler,
             size_t FramesContext,
             size_t T,
-            typename Real = double> // TODO: seems it is not necessary, remove
+            typename Real = float> // TODO: seems it is not necessary, remove
     class HashPrint {
     public:
         HashPrint() {

@@ -12,19 +12,18 @@ namespace hpfw::spectrum {
     /// CQT is a wrapper class around essentia extractor.
     ///
     /// \tparam SampleRate
-    /// \tparam NFFT
     /// \tparam HopLength
     /// \tparam BinsPerOctave
     /// \tparam NumberBins
-    /// \tparam MinFrequency
-    template<size_t SampleRate = 44100,
+    /// \tparam DownsampleFactor
+    template<size_t SampleRate = 44100, // TODO: maybe pass parameter to constructor instead
             size_t HopLength = 96,
             size_t BinsPerOctave = 24,
             size_t NumberBins = 121,
             size_t DownsampleFactor = 3>
     class CQT {
     public:
-        using Spectrogram = Eigen::Matrix<double, NumberBins, Eigen::Dynamic>;
+        using Spectrogram = Eigen::Matrix<float, NumberBins, Eigen::Dynamic>;
 
         CQT() {
             essentia::init();
@@ -50,6 +49,7 @@ namespace hpfw::spectrum {
 
             vector<float> audioBuffer;
             audio->output("audio").set(audioBuffer);
+
             audio->compute();
 
             auto cqt = uptr(factory.create("NSGConstantQ",
@@ -58,8 +58,8 @@ namespace hpfw::spectrum {
                                            "binsPerOctave", int(BinsPerOctave),
                                            "minimumWindow", int(HopLength),
                                            "window", "hann",
-                                           "minFrequency", 130.81,
-                                           "maxFrequency", 4186.01));
+                                           "minFrequency", 130.81, // C3
+                                           "maxFrequency", 4186.01)); // C8
 
             vector<vector<complex<float>>> spectrum;
             vector<complex<float>> tmp1;
@@ -71,15 +71,14 @@ namespace hpfw::spectrum {
 
             cqt->compute();
 
-            Spectrogram spectrogram(NumberBins, 0);
-            for (size_t i = 0; i < spectrum[0].size(); i += DownsampleFactor) {
-                vector<double> v(NumberBins);
+            Spectrogram spectrogram(NumberBins, spectrum[0].size() / DownsampleFactor + 1);
+            for (size_t i = 0, cnt = 0; i < spectrum[0].size(); i += DownsampleFactor, ++cnt) {
+                vector<float> v(NumberBins);
                 for (size_t j = 0; j < NumberBins; ++j) {
                     v[j] = std::abs(spectrum[j][i]);
                 }
 
-                spectrogram.conservativeResize(spectrogram.rows(), spectrogram.cols() + 1);
-                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<double, NumberBins, 1>(v.data());
+                spectrogram.col(cnt) = Eigen::Matrix<float, NumberBins, 1>(v.data());
             }
 
             return amplitude_to_db(spectrogram);

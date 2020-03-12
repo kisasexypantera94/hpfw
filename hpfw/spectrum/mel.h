@@ -4,6 +4,8 @@
 #include <essentia/algorithmfactory.h>
 #include <essentia/essentiamath.h>
 
+#include "convert.h"
+
 namespace hpfw::spectrum {
 
     /// MelSpectrogram is a wrapper class around essentia extractor.
@@ -18,7 +20,7 @@ namespace hpfw::spectrum {
             size_t HopLength = SampleRate * 10 / 1000>
     class MelSpectrogram {
     public:
-        using Spectrogram = Eigen::Matrix<double, MelBins, Eigen::Dynamic>;
+        using Spectrogram = Eigen::Matrix<float, MelBins, Eigen::Dynamic>;
 
         MelSpectrogram() {
             essentia::init();
@@ -97,9 +99,8 @@ namespace hpfw::spectrum {
                 spec->compute();
                 melbands->compute();
 
-                vector<double> bands_double(bands.begin(), bands.end());
                 spectrogram.conservativeResize(spectrogram.rows(), spectrogram.cols() + 1);
-                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<double, MelBins, 1>::Map(bands_double.data());
+                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<float, MelBins, 1>::Map(bands.data());
             }
 
             return power_to_db(spectrogram);
