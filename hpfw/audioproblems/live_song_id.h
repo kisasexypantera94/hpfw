@@ -9,7 +9,7 @@
 
 namespace hpfw {
 
-    using DefaultLiveIdAlgoConfig = HashPrint<uint64_t, spectrum::CQT<>, 32, 10>;
+    using DefaultLiveIdAlgoConfig = HashPrint<uint64_t, spectrum::CQT<>, 20, 80>;
 
     template<typename Algo = DefaultLiveIdAlgoConfig>
     class LiveSongIdentification {

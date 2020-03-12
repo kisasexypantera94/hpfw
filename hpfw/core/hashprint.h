@@ -62,7 +62,7 @@ namespace hpfw {
             typename SpectrogramHandler,
             size_t FramesContext,
             size_t T,
-            typename Real = float> // TODO: seems it is not necessary, remove
+            typename Real = double> // TODO: seems it is not necessary, remove
     class HashPrint {
     public:
         HashPrint() {
@@ -122,9 +122,9 @@ namespace hpfw {
         /// Number of filters is equal to number of bits in hashprint representation
         static constexpr size_t NumOfFilters = sizeof(N) * 8;
 
-        using Frames = Eigen::Matrix<float, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
-        using CovarianceMatrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
-        using Filters = Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic>;
+        using Frames = Eigen::Matrix<Real, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
+        using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
+        using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
 
         struct FilenameFramesPair {
             std::string filename;
@@ -204,7 +204,7 @@ namespace hpfw {
 
             Frames frames(FrameSize, spectro.cols() - 2 * W + 1);
             for (size_t i = W, cnt = 0; i < spectro.cols() - W + 1; ++i, ++cnt) {
-                Matrix<float, Dynamic, Dynamic, RowMajor> x = spectro.block(0, i - W, SpectroRows, FramesContext);
+                Matrix<Real, Dynamic, Dynamic, RowMajor> x = spectro.block(0, i - W, SpectroRows, FramesContext);
                 x.resize(FrameSize, 1);
 
                 frames.col(cnt) = std::move(x);
@@ -213,11 +213,11 @@ namespace hpfw {
             return frames;
         }
 
-        static auto calc_cov(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
+        static auto calc_cov(const Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            Matrix<float, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
+            Matrix<Real, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
             return (centered.adjoint() * centered) / double(mat.rows() - 1);
         }
 
@@ -234,7 +234,7 @@ namespace hpfw {
         }
 
         /// Calculate deltas and apply threshold.
-        static auto calc_fingerprint(const Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
+        static auto calc_fingerprint(const Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 

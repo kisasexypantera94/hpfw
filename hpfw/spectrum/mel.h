@@ -18,7 +18,7 @@ namespace hpfw::spectrum {
             size_t HopLength = SampleRate * 10 / 1000>
     class MelSpectrogram {
     public:
-        using Spectrogram = Eigen::Matrix<float, MelBins, Eigen::Dynamic>;
+        using Spectrogram = Eigen::Matrix<double, MelBins, Eigen::Dynamic>;
 
         MelSpectrogram() {
             essentia::init();
@@ -97,18 +97,12 @@ namespace hpfw::spectrum {
                 spec->compute();
                 melbands->compute();
 
+                vector<double> bands_double(bands.begin(), bands.end());
                 spectrogram.conservativeResize(spectrogram.rows(), spectrogram.cols() + 1);
-                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<Real, MelBins, 1>::Map(bands.data());
+                spectrogram.col(spectrogram.cols() - 1) = Eigen::Matrix<double, MelBins, 1>::Map(bands_double.data());
             }
 
-            double maxVal = std::max(1e-10, double(spectrogram.maxCoeff()));
-            spectrogram = 10.0 * (spectrogram.array() < 1e-10).select(1e-10, spectrogram).array().log10()
-                          - 10.0 * log10(maxVal);
-
-            maxVal = spectrogram.maxCoeff();
-            spectrogram = (spectrogram.array() < (maxVal - 80.0)).select(maxVal - 80.0, spectrogram);
-
-            return spectrogram;
+            return power_to_db(spectrogram);
         }
     };
 
