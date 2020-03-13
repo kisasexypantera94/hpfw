@@ -19,6 +19,7 @@ namespace hpfw::io {
 
     private:
         static inline std::once_flag flag;
+
         static void init();
 
         static constexpr size_t part_size = 1024;
