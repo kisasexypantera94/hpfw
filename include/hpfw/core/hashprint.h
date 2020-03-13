@@ -157,7 +157,7 @@ namespace hpfw {
                             {
                                 std::scoped_lock lock(mtx);
                                 std::cout << filename << std::endl;
-                                accum_cov.noalias() += cov;
+                                accum_cov += cov;
                             }
                         } catch (const std::exception &e) {
                             std::cerr << e.what() << std::endl;
