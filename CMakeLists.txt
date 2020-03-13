@@ -1,14 +1,61 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.11...3.16)
 
-project(hpfw LANGUAGES CXX)
+project(hpfw
+        VERSION 0.0.1
+        DESCRIPTION "Audio HashPrint framework"
+        LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-#set(CMAKE_CXX_FLAGS "-fsanitize=thread")
 
-add_definitions(
+add_library(hpfw INTERFACE)
+
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+target_link_directories(hpfw INTERFACE /usr/local/lib)
+target_include_directories(
+        hpfw
+        INTERFACE
+        SYSTEM
+
+        include/
+
+        /usr/local/include
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/include
+
+        thirdparty/cpp-taskflow-2.2.0
+)
+
+target_link_libraries(
+        hpfw
+        INTERFACE
+
+        Eigen3::Eigen
+        mpg123
+        fftw3
+        tbb
+        essentia
+
+        # MKL RELATED
+        pthread
+        m
+        dl
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_intel_lp64.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_sequential.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_core.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_blacs_mpich_lp64.a
+        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_scalapack_ilp64.a
+)
+target_compile_definitions(
+        hpfw
+        INTERFACE
+
         -DUSE_FFTW
         -DEIGEN_USE_MKL_ALL
+)
+
+target_compile_options(
+        hpfw
+        INTERFACE
 
         -m64
 
@@ -35,44 +82,4 @@ add_definitions(
         -Wno-unused
 )
 
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-
-include_directories(
-        SYSTEM
-
-        /usr/local/include
-        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/include
-
-        thirdparty/Gist/src
-        thirdparty/cpp-taskflow-2.2.0
-)
-
-link_directories(/usr/local/lib)
-
-add_executable(
-        hpfw
-
-        main.cpp
-)
-
-target_link_libraries(
-        hpfw
-
-        Eigen3::Eigen
-        mpg123
-        fftw3
-        tbb
-        essentia
-
-        # MKL RELATED
-        pthread
-        m
-        dl
-        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_intel_lp64.a
-        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_sequential.a
-        #        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_intel_thread.a
-        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_core.a
-        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_blacs_mpich_lp64.a
-        /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/lib/libmkl_scalapack_ilp64.a
-        #        /opt/intel/compilers_and_libraries_2020.0.166/mac/compiler/lib/libiomp5.a
-)
+add_subdirectory(examples)

@@ -5,6 +5,7 @@
 
 #include <cereal/types/vector.hpp>
 
+#include "../core/hashprint.h"
 #include "../spectrum/cqt.h"
 
 namespace hpfw {
