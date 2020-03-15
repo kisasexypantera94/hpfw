@@ -5,8 +5,8 @@
 
 #include <cereal/types/vector.hpp>
 
-#include "../core/hashprint.h"
-#include "../spectrum/cqt.h"
+#include "hpfw/core/hashprint.h"
+#include "hpfw/spectrum/cqt.h"
 
 namespace hpfw {
 
@@ -85,7 +85,7 @@ namespace hpfw {
             SearchResult res = {"", std::numeric_limits<size_t>::max(), 0};
             // TODO: maybe parallelize search
             for (const auto &[ref_filename, ref_fp] : db) {
-                size_t best_distance = std::numeric_limits<size_t>::max();
+                uint64_t best_distance = std::numeric_limits<size_t>::max();
                 int64_t best_offset = 0;
 
                 size_t n = ref_fp.size();
