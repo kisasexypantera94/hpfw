@@ -15,23 +15,35 @@ namespace hpfw {
     template<typename Algo = DefaultLiveIdAlgoConfig>
     class LiveSongIdentification {
     public:
-        LiveSongIdentification() = default;
+        struct Config {
+            std::optional<std::string> cache_dir;
+        };
 
-        LiveSongIdentification(Algo &&algo) : algo(std::move(algo)) {}
+        LiveSongIdentification(const Config &cfg) : algo(Algo(cfg.cache_dir.value_or("cache/"))) {
+            algo.load();
+        }
 
-        ~LiveSongIdentification() = default;
+        ~LiveSongIdentification() {
+            algo.save();
+        }
 
         auto index(const std::vector<std::string> &filenames) {
             build_db(algo.prepare(filenames));
         }
 
         auto search(const std::vector<std::string> &filenames) {
+            uint16_t cnt_wrong = 0;
             for (const auto &f: filenames) {
                 std::cout << "Finding " << f << std::endl;
                 auto res = find(f);
+                auto res_name = std::string(std::filesystem::path(res.filename).stem());
+                if (f.find(res_name) == std::string::npos) {
+                    ++cnt_wrong;
+                }
                 std::cout << res.filename << " " << res.cnt << " " << res.offset << std::endl
                           << std::endl;
             }
+            std::cout << cnt_wrong << " " << 1 - cnt_wrong / float(filenames.size()) << std::endl;
         }
 
         /// Save database and algorithm handler.
@@ -41,7 +53,6 @@ namespace hpfw {
                 std::ofstream os(dump_name, std::ios::binary);
                 cereal::BinaryOutputArchive archive(os);
                 archive(db);
-                archive(algo);
             }
             return dump_name;
         }
@@ -52,7 +63,6 @@ namespace hpfw {
                 std::ifstream is(dump_name, std::ios::binary);
                 cereal::BinaryInputArchive archive(is);
                 archive(db);
-                archive(algo);
             }
 
             return *this;

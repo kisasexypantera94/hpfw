@@ -20,6 +20,16 @@ namespace hpfw::utils {
         }
     }
 
+    auto get_dir_files(const std::string &dir) {
+        auto it = std::filesystem::directory_iterator(dir);
+        std::vector<std::string> files;
+        for (const auto &f : it) {
+            const auto &filename = f.path();
+            files.emplace_back(filename);
+        }
+        return files;
+    }
+
     template<typename T>
     struct extract_value_type {
         using value_type = T;
