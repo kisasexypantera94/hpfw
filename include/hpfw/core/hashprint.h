@@ -9,7 +9,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <cereal/types/unordered_map.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
@@ -20,6 +19,7 @@
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
 
+#include "hpfw/core/cache.h"
 #include "hpfw/utils.h"
 
 namespace hpfw {
@@ -63,16 +63,12 @@ namespace hpfw {
             typename SpectrogramHandler,
             size_t FramesContext,
             size_t T,
-            typename Real = float> // TODO: seems it is not necessary, remove
+            template<typename, typename, typename> typename Cache,
+            typename Real = float>
     class HashPrint {
     public:
-        HashPrint(const std::string &cache) : cache_dir(cache) {
+        HashPrint(const std::string &cache) : cache(Cache<Frames, CovarianceMatrix, Filters>(cache)) {
             Eigen::initParallel();
-
-            if (!std::filesystem::exists(cache_dir)) {
-                std::filesystem::create_directory(cache_dir);
-                std::filesystem::create_directory(cache_dir + "frames");
-            }
 
             accum_cov.resize(FrameSize, FrameSize);
         }
@@ -113,36 +109,15 @@ namespace hpfw {
         void save() const {
             spdlog::info("Saving cache");
 
-            {
-                std::ofstream os(cache_dir + "filters.cereal", std::ios::binary);
-                cereal::BinaryOutputArchive archive(os);
-                archive(filters);
-            }
-            {
-                std::ofstream os(cache_dir + "accum_cov.cereal", std::ios::binary);
-                cereal::BinaryOutputArchive archive(os);
-                archive(accum_cov);
-            }
+            cache.set_cov(accum_cov);
+            cache.set_filters(filters);
         }
 
         void load() {
             spdlog::info("Loading cache");
 
-            if (!std::filesystem::exists(cache_dir + "filters.cereal")) {
-                spdlog::warn("Cache is empty");
-                return;
-            }
-
-            {
-                std::ifstream is(cache_dir + "filters.cereal", std::ios::binary);
-                cereal::BinaryInputArchive archive(is);
-                archive(filters);
-            }
-            {
-                std::ifstream is(cache_dir + "accum_cov.cereal", std::ios::binary);
-                cereal::BinaryInputArchive archive(is);
-                archive(accum_cov);
-            }
+            cache.get_cov(accum_cov);
+            cache.get_filters(filters);
         }
 
     private:
@@ -158,7 +133,7 @@ namespace hpfw {
         using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
         using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
 
-        const std::string cache_dir;
+        const Cache<Frames, CovarianceMatrix, Filters> cache;
         const SpectrogramHandler sh;
         CovarianceMatrix accum_cov;
         Filters filters;
@@ -180,15 +155,9 @@ namespace hpfw {
                                 std::scoped_lock lock(mtx);
                                 accum_cov += cov;
                             }
-                            {
-                                // Cache frames to calculate features later.
-                                // They will also be needed when adding new tracks.
-
-                                const auto stem = std::filesystem::path(filename).stem();
-                                std::ofstream os(cache_dir + "frames/" + std::string(stem), std::ios::binary);
-                                cereal::BinaryOutputArchive archive(os);
-                                archive(frames);
-                            }
+                            // Cache frames to calculate features later.
+                            // They will also be needed when adding new tracks.
+                            cache.set_frames(filename, frames);
                         } catch (const std::exception &e) {
                             spdlog::error("Error preprocessing '{}': {}", filename, e.what());
                         }
@@ -203,23 +172,16 @@ namespace hpfw {
 
         /// Collect fingerprints. Steps 3-6.
         auto collect_fingerprints() const -> tbb::concurrent_vector<FilenameFingerprintPair> {
-            spdlog::info("Calculating fingerprints");
-
-            auto files = utils::get_dir_files(cache_dir + "frames/");
+            auto frames = cache.get_frames();
             tbb::concurrent_vector<FilenameFingerprintPair> fingerprints;
             tf::Taskflow taskflow;
             taskflow.parallel_for(
-                    files.cbegin(), files.cend(),
-                    [this, &fingerprints](const auto &f) {
-                        Frames frames;
-                        {
-                            std::ifstream is(f, std::ios::binary);
-                            cereal::BinaryInputArchive archive(is);
-                            archive(frames);
-                        }
-
-                        const auto stem = std::string(std::filesystem::path(f).stem());
-                        fingerprints.push_back({stem, calc_fingerprint(filters * frames)});
+                    frames.begin(), frames.end(),
+                    [this, &fingerprints](const std::pair<std::string, Frames> &p) {
+                        const auto &[filename, f] = p;
+                        const auto stem = std::string(std::filesystem::path(filename).stem());
+                        spdlog::info("Calculating fingerprints for {}", stem);
+                        fingerprints.push_back({stem, calc_fingerprint(filters * f)});
                     }
             );
 

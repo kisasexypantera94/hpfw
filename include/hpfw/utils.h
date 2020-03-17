@@ -37,14 +37,15 @@ namespace hpfw::utils {
 
     /// extract hashprint type from HashPrint
     template<
-            template<typename, typename, size_t, size_t, typename> class X,
+            template<typename, typename, size_t, size_t, typename, typename> class X,
             typename N,
             typename SH,
             size_t FC,
             size_t T,
+            typename C,
             typename R
     >
-    struct extract_value_type<X<N, SH, FC, T, R>> {
+    struct extract_value_type<X<N, SH, FC, T, C, R>> {
         using value_type = N;
     };
 

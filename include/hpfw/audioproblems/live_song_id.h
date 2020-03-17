@@ -7,10 +7,11 @@
 
 #include "hpfw/core/hashprint.h"
 #include "hpfw/spectrum/cqt.h"
+#include "hpfw/core/cache.h"
 
 namespace hpfw {
 
-    using DefaultLiveIdAlgoConfig = HashPrint<uint64_t, spectrum::CQT<>, 20, 80>;
+    using DefaultLiveIdAlgoConfig = HashPrint<uint64_t, spectrum::CQT<>, 20, 80, cache::DriveCache>;
 
     template<typename Algo = DefaultLiveIdAlgoConfig>
     class LiveSongIdentification {
