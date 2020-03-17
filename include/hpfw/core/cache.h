@@ -54,6 +54,10 @@ namespace hpfw::cache {
             load(cache_dir + "filters.cereal", filters);
         }
 
+        auto size() const -> uint64_t {
+            return utils::count_dir_files(cache_dir + "frames/");
+        }
+
     private:
         const std::string cache_dir;
         mutable std::vector<std::string> filenames;

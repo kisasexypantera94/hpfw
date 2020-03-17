@@ -30,6 +30,17 @@ namespace hpfw::utils {
         return files;
     }
 
+    auto count_dir_files(const std::string &dir) -> uint64_t {
+        namespace fs = std::filesystem;
+
+        auto it = std::filesystem::directory_iterator(dir);
+        return std::count_if(
+                fs::begin(it),
+                fs::end(it),
+                [](const auto &entry) { return entry.is_regular_file(); }
+        );
+    }
+
     template<typename T>
     struct extract_value_type {
         using value_type = T;
@@ -37,15 +48,14 @@ namespace hpfw::utils {
 
     /// extract hashprint type from HashPrint
     template<
-            template<typename, typename, size_t, size_t, typename, typename> class X,
+            template<typename, typename, size_t, size_t, typename> class X,
             typename N,
             typename SH,
             size_t FC,
             size_t T,
-            typename C,
-            typename R
+            typename C
     >
-    struct extract_value_type<X<N, SH, FC, T, C, R>> {
+    struct extract_value_type<X<N, SH, FC, T, C>> {
         using value_type = N;
     };
 

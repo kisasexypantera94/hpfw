@@ -110,7 +110,7 @@ namespace hpfw {
                     size_t end_col = start_col + k - 1;
 
                     size_t cnt = 0;
-                    for (long long j = 0; j < k; ++j) {
+                    for (size_t j = 0; j < k; ++j) {
                         cnt += __builtin_popcountll(
                                 fp[j] ^ ref_fp[start_col + j]); // TODO: implement templated popcount
                     }

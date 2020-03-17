@@ -58,13 +58,11 @@ namespace hpfw {
     /// \tparam SpectrogramHandler - provides spectrogram
     /// \tparam FramesContext - number of context frames used
     /// \tparam T - time lag
-    /// \tparam Real
     template<typename N,
             typename SpectrogramHandler,
             size_t FramesContext,
             size_t T,
-            template<typename, typename, typename> typename Cache,
-            typename Real = float>
+            template<typename, typename, typename> typename Cache>
     class HashPrint {
     public:
         HashPrint(const std::string &cache) : cache(Cache<Frames, CovarianceMatrix, Filters>(cache)) {
@@ -129,9 +127,9 @@ namespace hpfw {
         /// Number of filters is equal to number of bits in hashprint representation
         static constexpr size_t NumOfFilters = sizeof(N) * 8;
 
-        using Frames = Eigen::Matrix<Real, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
-        using CovarianceMatrix = Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
-        using Filters = Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic>;
+        using Frames = Eigen::Matrix<float, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
+        using CovarianceMatrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
+        using Filters = Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic>;
 
         const Cache<Frames, CovarianceMatrix, Filters> cache;
         const SpectrogramHandler sh;
@@ -167,7 +165,7 @@ namespace hpfw {
             tf::Executor executor;
             executor.run(taskflow).wait();
 
-            filters = calc_filters(accum_cov);
+            filters = calc_filters(accum_cov / cache.size());
         }
 
         /// Collect fingerprints. Steps 3-6.
@@ -199,7 +197,7 @@ namespace hpfw {
 
             Frames frames(FrameSize, spectro.cols() - 2 * W + 1);
             for (size_t i = W, cnt = 0; i < spectro.cols() - W + 1; ++i, ++cnt) {
-                Matrix<Real, Dynamic, Dynamic, RowMajor> x = spectro.block(0, i - W, SpectroRows, FramesContext);
+                Matrix<float, Dynamic, Dynamic, RowMajor> x = spectro.block(0, i - W, SpectroRows, FramesContext);
                 x.resize(FrameSize, 1);
 
                 frames.col(cnt) = std::move(x);
@@ -209,11 +207,11 @@ namespace hpfw {
         }
 
         /// Calculate covariance matrix.
-        static auto calc_cov(const Eigen::Matrix<Real, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
+        static auto calc_cov(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> &mat) -> CovarianceMatrix {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            const Matrix<Real, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
+            const Matrix<float, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
             return (centered.adjoint() * centered) / double(mat.rows() - 1);
         }
 
@@ -226,7 +224,7 @@ namespace hpfw {
         }
 
         /// Calculate deltas and apply threshold.
-        static auto calc_fingerprint(const Eigen::Matrix<Real, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
+        static auto calc_fingerprint(const Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic> &f) -> Fingerprint {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
