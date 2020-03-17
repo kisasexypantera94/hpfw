@@ -69,6 +69,10 @@ namespace hpfw::cache {
 
         template<typename T>
         static void load(const std::string &filename, T &obj) {
+            if (!std::filesystem::exists(filename)) {
+                return;
+            }
+
             {
                 std::ifstream is(filename, std::ios::binary);
                 cereal::BinaryInputArchive archive(is);
