@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <iostream>
 
-#include <hpfw/audioproblems/combiner.h>
+#include <hpfw/audioproblems/combiner/combiner.h>
 
 namespace fs = std::filesystem;
 using namespace std;

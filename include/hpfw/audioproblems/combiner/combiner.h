@@ -3,9 +3,9 @@
 #include <vector>
 #include <filesystem>
 
-#include "../core/hashprint.h"
-#include "../spectrum/mel.h"
-#include "../utils.h"
+#include "hpfw/core/hashprint.h"
+#include "hpfw/spectrum/mel.h"
+#include "hpfw/utils.h"
 
 namespace hpfw {
 

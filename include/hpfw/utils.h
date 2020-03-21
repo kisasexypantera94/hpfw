@@ -34,11 +34,11 @@ namespace hpfw::utils {
         namespace fs = std::filesystem;
 
         auto it = std::filesystem::directory_iterator(dir);
-        return std::count_if(
+        return static_cast<uint64_t>(std::count_if(
                 fs::begin(it),
                 fs::end(it),
                 [](const auto &entry) { return entry.is_regular_file(); }
-        );
+        ));
     }
 
     template<typename T>
@@ -63,11 +63,9 @@ namespace hpfw::utils {
 
 namespace cereal {
 
-    template<class Archive, class _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
+    template<typename Archive, typename _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
-    typename std::enable_if<traits::is_output_serializable < BinaryData < _Scalar>, Archive>::value, void>
-
-    ::type
+    typename std::enable_if<traits::is_output_serializable < BinaryData < _Scalar>, Archive>::value, void>::type
     save(Archive &ar, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> const &m) {
         int32_t rows = m.rows();
         int32_t cols = m.cols();
@@ -76,11 +74,9 @@ namespace cereal {
         ar(binary_data(m.data(), rows * cols * sizeof(_Scalar)));
     }
 
-    template<class Archive, class _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
+    template<typename Archive, typename _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
-    typename std::enable_if<traits::is_input_serializable < BinaryData < _Scalar>, Archive>::value, void>
-
-    ::type
+    typename std::enable_if<traits::is_input_serializable < BinaryData < _Scalar>, Archive>::value, void>::type
     load(Archive &ar, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> &m) {
         int32_t rows;
         int32_t cols;

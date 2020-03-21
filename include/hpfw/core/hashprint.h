@@ -1,29 +1,17 @@
 #pragma once
 
 #include <algorithm>
-#include <fstream>
-#include <functional>
 #include <iostream>
-#include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
-#include <cereal/types/vector.hpp>
-#include <cereal/types/memory.hpp>
-#include <cereal/archives/binary.hpp>
-#include <cereal/cereal.hpp>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
-#include <spdlog/spdlog.h>
-#include <taskflow/taskflow.hpp>
-#include <tbb/concurrent_vector.h>
-
-#include "hpfw/core/cache.h"
-#include "hpfw/utils.h"
 
 namespace hpfw {
 
+    /// HashPrint provides "Collector" classes with the necessary tools to calculate hashprints.
+    ///
     /// Algorithm (taken from Audio Hashprints: Theory & Application):
     ///
     /// 1. Compute spectrogram. The first step is to compute a time-frequency representation of audio.
@@ -61,64 +49,9 @@ namespace hpfw {
     template<typename N,
             typename SpectrogramHandler,
             size_t FramesContext,
-            size_t T,
-            template<typename, typename, typename> typename Cache>
+            size_t T>
     class HashPrint {
     public:
-        HashPrint(const std::string &cache) : cache(Cache<Frames, CovarianceMatrix, Filters>(cache)) {
-            Eigen::initParallel();
-
-            accum_cov.resize(FrameSize, FrameSize);
-        }
-
-        ~HashPrint() = default;
-
-        using Fingerprint = std::vector<N>;
-
-        struct FilenameFingerprintPair {
-            std::string filename;
-            Fingerprint fingerprint;
-
-            template<class Archive>
-            void save(Archive &ar) const {
-                ar(filename);
-                ar(fingerprint);
-            }
-
-            template<class Archive>
-            void load(Archive &ar) {
-                ar(filename);
-                ar(fingerprint);
-            }
-        };
-
-        /// Process audiofiles, calculate filters.
-        auto prepare(const std::vector<std::string> &filenames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
-            preprocess(filenames);
-            return collect_fingerprints();
-        }
-
-        auto calc_fingerprint(const std::string &filename) const -> Fingerprint {
-            const Spectrogram spectro = sh.spectrogram(filename);
-            const Frames frames = calc_frames(spectro);
-            return calc_fingerprint(filters * frames);
-        }
-
-        void save() const {
-            spdlog::info("Saving cache");
-
-            cache.set_cov(accum_cov);
-            cache.set_filters(filters);
-        }
-
-        void load() {
-            spdlog::info("Loading cache");
-
-            cache.get_cov(accum_cov);
-            cache.get_filters(filters);
-        }
-
-    private:
         using Spectrogram = typename SpectrogramHandler::Spectrogram;
         static constexpr size_t SpectroRows = Spectrogram::RowsAtCompileTime;
         static constexpr size_t FrameSize = SpectroRows * FramesContext;
@@ -130,64 +63,15 @@ namespace hpfw {
         using Frames = Eigen::Matrix<float, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
         using CovarianceMatrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
         using Filters = Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic>;
+        using Fingerprint = std::vector<N>;
 
-        const Cache<Frames, CovarianceMatrix, Filters> cache;
         const SpectrogramHandler sh;
-        CovarianceMatrix accum_cov;
-        Filters filters;
 
-        /// Calculate frames and filters. Steps 1-3.
-        void preprocess(const std::vector<std::string> &filenames) {
-            std::mutex mtx;
-            tf::Taskflow taskflow;
-            taskflow.parallel_for(
-                    filenames.cbegin(), filenames.cend(),
-                    [this, &mtx](const std::string &filename) {
-                        try {
-                            spdlog::info("Preprocessing '{}'", filename);
-
-                            const Spectrogram spectro = sh.spectrogram(filename);
-                            const Frames frames = calc_frames(spectro);
-                            const CovarianceMatrix cov = calc_cov(frames.transpose());
-                            {
-                                std::scoped_lock lock(mtx);
-                                accum_cov += cov;
-                            }
-                            // Cache frames to calculate features later.
-                            // They will also be needed when adding new tracks.
-                            cache.set_frames(filename, frames);
-                        } catch (const std::exception &e) {
-                            spdlog::error("Error preprocessing '{}': {}", filename, e.what());
-                        }
-                    }
-            );
-
-            tf::Executor executor;
-            executor.run(taskflow).wait();
-
-            filters = calc_filters(accum_cov / cache.size());
+        HashPrint() {
+            Eigen::initParallel();
         }
 
-        /// Collect fingerprints. Steps 3-6.
-        auto collect_fingerprints() const -> tbb::concurrent_vector<FilenameFingerprintPair> {
-            auto frames = cache.get_frames();
-            tbb::concurrent_vector<FilenameFingerprintPair> fingerprints;
-            tf::Taskflow taskflow;
-            taskflow.parallel_for(
-                    frames.begin(), frames.end(),
-                    [this, &fingerprints](const std::pair<std::string, Frames> &p) {
-                        const auto &[filename, f] = p;
-                        const auto stem = std::string(std::filesystem::path(filename).stem());
-                        spdlog::info("Calculating fingerprints for {}", stem);
-                        fingerprints.push_back({stem, calc_fingerprint(filters * f)});
-                    }
-            );
-
-            tf::Executor executor;
-            executor.run(taskflow).wait();
-
-            return fingerprints;
-        }
+        ~HashPrint() = default;
 
         /// Add context to frames.
         static auto calc_frames(const Spectrogram &spectro) -> Frames {
@@ -212,13 +96,11 @@ namespace hpfw {
             using Eigen::Dynamic;
 
             const Matrix<float, Dynamic, Dynamic> centered = mat.rowwise() - mat.colwise().mean();
-            return (centered.adjoint() * centered) / double(mat.rows() - 1);
+            return (centered.adjoint() * centered) / float(mat.rows() - 1);
         }
 
         /// Find top N eigen vectors - these are the filters.
         static auto calc_filters(const CovarianceMatrix &cov) -> Filters {
-            spdlog::info("Calculating filters");
-
             Eigen::SelfAdjointEigenSolver<CovarianceMatrix> solver(cov);
             return solver.eigenvectors().rowwise().reverse().transpose().block(0, 0, NumOfFilters, FrameSize);
         }
@@ -236,6 +118,7 @@ namespace hpfw {
             return fp;
         }
 
+    private:
         /// Pack bool column into integer.
         static auto bool_col_to_num(const Eigen::Matrix<bool, NumOfFilters, 1> &c) -> N {
             size_t p = 0;

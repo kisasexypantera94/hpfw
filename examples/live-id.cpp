@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <iostream>
 
-#include <hpfw/audioproblems/live_song_id.h>
+#include <hpfw/audioproblems/live-song-id/live_song_id.h>
 
 namespace fs = std::filesystem;
 using namespace std;
@@ -34,9 +34,10 @@ int main() {
 
     auto index_files = get_filenames(index_dir);
     auto search_files = get_filenames(search_dir);
+    sort(search_files.begin(), search_files.end());
 
-    hpfw::LiveSongIdentification liveid({nullopt});
-    liveid.index(index_files); // or liveid.load("dbname");
+    hpfw::LiveSongIdentification liveid;
+    liveid.index(index_files);
     liveid.search(search_files);
 
     return 0;

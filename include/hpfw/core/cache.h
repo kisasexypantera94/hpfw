@@ -12,7 +12,7 @@
 
 namespace hpfw::cache {
 
-    template<typename Frames, typename CovarianceMatrix, typename Filters>
+    template<typename Algo>
     class DriveCache {
     public:
         explicit DriveCache(const std::string &cache) : cache_dir(cache) {
@@ -24,16 +24,16 @@ namespace hpfw::cache {
 
         ~DriveCache() = default;
 
-        void set_frames(const std::string &filename, const Frames &f) const {
+        void set_frames(const std::string &filename, const typename Algo::Frames &f) const {
             const auto stem = std::string(std::filesystem::path(filename).stem());
             save(cache_dir + "frames/" + stem, f);
         }
 
-        void set_cov(const CovarianceMatrix &accum_cov) const {
+        void set_cov(const typename Algo::CovarianceMatrix &accum_cov) const {
             save(cache_dir + "accum_cov.cereal", accum_cov);
         }
 
-        void set_filters(const Filters &f) const {
+        void set_filters(const typename Algo::Filters &f) const {
             save(cache_dir + "filters.cereal", f);
         }
 
@@ -46,11 +46,11 @@ namespace hpfw::cache {
                    boost::adaptors::transformed(load_frame);
         }
 
-        void get_cov(CovarianceMatrix &accum_cov) const {
+        void get_cov(typename Algo::CovarianceMatrix &accum_cov) const {
             load(cache_dir + "accum_cov.cereal", accum_cov);
         }
 
-        void get_filters(Filters &filters) const {
+        void get_filters(typename Algo::Filters &filters) const {
             load(cache_dir + "filters.cereal", filters);
         }
 
@@ -84,8 +84,8 @@ namespace hpfw::cache {
             }
         }
 
-        static auto load_frame(const std::string &f) -> std::pair<std::string, Frames> {
-            Frames frames;
+        static auto load_frame(const std::string &f) -> std::pair<std::string, typename Algo::Frames> {
+            typename Algo::Frames frames;
             load(f, frames);
             return std::make_pair(f, std::move(frames));
         }
