@@ -62,7 +62,7 @@ namespace hpfw {
         }
 
     private:
-        Algo algo;
+        const Algo algo;
         CovarianceMatrix accum_cov;
         Filters filters;
         Cache cache;
@@ -84,9 +84,9 @@ namespace hpfw {
                                 std::scoped_lock lock(mtx);
                                 accum_cov += cov;
                             }
-                            // Cache frames to calculate features later.
-                            // They will also be needed when adding new tracks.
-                            cache.set_frames(filename, frames);
+                            // Cache spectrogram to calculate features later.
+                            // It will also be needed when adding new tracks.
+                            cache.set_spectro(filename, spectro);
                         } catch (const std::exception &e) {
                             spdlog::error("Error preprocessing '{}': {}", filename, e.what());
                         }
@@ -102,16 +102,18 @@ namespace hpfw {
 
         /// Collect fingerprints. Steps 3-6.
         auto collect_fingerprints() const -> tbb::concurrent_vector<FilenameFingerprintPair> {
-            auto frames = cache.get_frames();
+            auto spectros = cache.get_spectros();
             tbb::concurrent_vector<FilenameFingerprintPair> fingerprints;
             tf::Taskflow taskflow;
             taskflow.parallel_for(
-                    frames.begin(), frames.end(),
-                    [this, &fingerprints](const std::pair<std::string, typename Algo::Frames> &p) {
-                        const auto &[filename, f] = p;
+                    spectros.begin(), spectros.end(),
+                    [this, &fingerprints](const std::pair<std::string, typename Algo::Spectrogram> &p) {
+                        const auto &[filename, spectro] = p;
                         const auto stem = std::string(std::filesystem::path(filename).stem());
                         spdlog::info("Calculating fingerprints for {}", stem);
-                        fingerprints.push_back({stem, algo.calc_fingerprint(filters * f)});
+
+                        const auto frames = algo.calc_frames(spectro);
+                        fingerprints.push_back({stem, algo.calc_fingerprint(filters * frames)});
                     }
             );
 

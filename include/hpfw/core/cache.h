@@ -18,15 +18,15 @@ namespace hpfw::cache {
         explicit DriveCache(const std::string &cache) : cache_dir(cache) {
             if (!std::filesystem::exists(cache_dir)) {
                 std::filesystem::create_directory(cache_dir);
-                std::filesystem::create_directory(cache_dir + "frames");
+                std::filesystem::create_directory(cache_dir + "spectros");
             }
         }
 
         ~DriveCache() = default;
 
-        void set_frames(const std::string &filename, const typename Algo::Frames &f) const {
+        void set_spectro(const std::string &filename, const typename Algo::Spectrogram &f) const {
             const auto stem = std::string(std::filesystem::path(filename).stem());
-            save(cache_dir + "frames/" + stem, f);
+            save(cache_dir + "spectros/" + stem, f);
         }
 
         void set_cov(const typename Algo::CovarianceMatrix &accum_cov) const {
@@ -37,13 +37,13 @@ namespace hpfw::cache {
             save(cache_dir + "filters.cereal", f);
         }
 
-        auto get_frames() const {
+        auto get_spectros() const {
             namespace fs = std::filesystem;
 
-            filenames = utils::get_dir_files(cache_dir + "frames/");
+            filenames = utils::get_dir_files(cache_dir + "spectros/");
 
             return boost::make_iterator_range(filenames.cbegin(), filenames.cend()) |
-                   boost::adaptors::transformed(load_frame);
+                   boost::adaptors::transformed(load_spectro);
         }
 
         void get_cov(typename Algo::CovarianceMatrix &accum_cov) const {
@@ -55,7 +55,7 @@ namespace hpfw::cache {
         }
 
         auto size() const -> uint64_t {
-            return utils::count_dir_files(cache_dir + "frames/");
+            return utils::count_dir_files(cache_dir + "spectros/");
         }
 
     private:
@@ -84,10 +84,10 @@ namespace hpfw::cache {
             }
         }
 
-        static auto load_frame(const std::string &f) -> std::pair<std::string, typename Algo::Frames> {
-            typename Algo::Frames frames;
-            load(f, frames);
-            return std::make_pair(f, std::move(frames));
+        static auto load_spectro(const std::string &f) -> std::pair<std::string, typename Algo::Spectrogram> {
+            typename Algo::Spectrogram spectro;
+            load(f, spectro);
+            return std::make_pair(f, std::move(spectro));
         }
 
     };
