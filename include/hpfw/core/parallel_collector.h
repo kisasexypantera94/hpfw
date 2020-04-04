@@ -10,7 +10,7 @@ namespace hpfw {
     ///
     /// \tparam Algo - specific `HashPrint` implementation
     /// \tparam Cache - storage for frames, filters and accumulated covariance matrix
-    template<typename Algo, typename Cache>
+    template<typename Algo, template<typename> typename Cache>
     class ParallelCollector {
     public:
         using Fingerprint = typename Algo::Fingerprint;
@@ -29,8 +29,9 @@ namespace hpfw {
         };
 
         // TODO: cache config
-        ParallelCollector() : cache("cache/") {
+        ParallelCollector() : algo(), cache("cache/") {
             accum_cov.resize(Algo::FrameSize, Algo::FrameSize);
+            filters.resize(Algo::NumOfFilters, Algo::FrameSize);
         }
 
         ~ParallelCollector() = default;
@@ -65,7 +66,7 @@ namespace hpfw {
         const Algo algo;
         CovarianceMatrix accum_cov;
         Filters filters;
-        Cache cache;
+        Cache<Algo> cache;
 
         /// Calculate frames and filters. Steps 1-3.
         void preprocess(const std::vector<std::string> &filenames) {

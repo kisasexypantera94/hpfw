@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <unsupported/Eigen/MatrixFunctions>
 #include <essentia/algorithmfactory.h>
 #include <essentia/essentiamath.h>
 
@@ -11,11 +10,11 @@ namespace hpfw::spectrum {
 
     /// CQT is a wrapper class around essentia extractor.
     ///
-    /// \tparam SampleRate
-    /// \tparam HopLength
-    /// \tparam BinsPerOctave
-    /// \tparam NumberBins
-    /// \tparam DownsampleFactor
+    /// \tparam SampleRate - sample rate of audiofile.
+    /// \tparam HopLength - number of samples between successive CQT columns.
+    /// \tparam BinsPerOctave - number of bins per octave.
+    /// \tparam NumberBins - number of frequency bins, starting at C3.
+    /// \tparam DownsampleFactor - hop size between CQT columns.
     template<size_t SampleRate = 44100, // TODO: maybe pass parameter to constructor instead
             size_t HopLength = 96,
             size_t BinsPerOctave = 24,

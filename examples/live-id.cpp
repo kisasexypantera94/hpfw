@@ -8,32 +8,15 @@
 namespace fs = std::filesystem;
 using namespace std;
 
-//constexpr auto index_dir = "/Users/chingachgook/dev/rust/khalzam/resources";
-//constexpr auto search_dir = "/Users/chingachgook/dev/rust/khalzam/samples";
 constexpr auto index_dir = "/Users/chingachgook/dev/QtProjects/hpfw/original";
 constexpr auto search_dir = "/Users/chingachgook/dev/QtProjects/hpfw/slices";
-
-auto get_filenames(const std::string &dir) {
-    auto it = fs::directory_iterator(dir);
-    std::vector<std::string> files;
-    for (const auto &f : it) {
-        const auto &filename = f.path();
-        if (filename.extension() != ".mp3") {
-            continue;
-        }
-
-        files.emplace_back(filename);
-    }
-
-    return files;
-}
 
 int main() {
     std::ios_base::sync_with_stdio(false);
     std::cin.tie(nullptr);
 
-    auto index_files = get_filenames(index_dir);
-    auto search_files = get_filenames(search_dir);
+    auto index_files = hpfw::utils::get_dir_files(index_dir);
+    auto search_files = hpfw::utils::get_dir_files(search_dir);
     sort(search_files.begin(), search_files.end());
 
     hpfw::LiveSongIdentification liveid;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <fstream>
+
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <cereal/types/unordered_map.hpp>
@@ -7,6 +9,7 @@
 #include <cereal/types/memory.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/cereal.hpp>
+#include <utility>
 
 #include "hpfw/utils.h"
 
@@ -15,7 +18,7 @@ namespace hpfw::cache {
     template<typename Algo>
     class DriveCache {
     public:
-        explicit DriveCache(const std::string &cache) : cache_dir(cache) {
+        explicit DriveCache(std::string cache) : cache_dir(std::move(cache)) {
             if (!std::filesystem::exists(cache_dir)) {
                 std::filesystem::create_directory(cache_dir);
                 std::filesystem::create_directory(cache_dir + "spectros");
@@ -64,11 +67,9 @@ namespace hpfw::cache {
 
         template<typename T>
         static void save(const std::string &filename, const T &obj) {
-            {
-                std::ofstream os(filename, std::ios::binary);
-                cereal::BinaryOutputArchive archive(os);
-                archive(obj);
-            }
+            std::ofstream os(filename, std::ios::binary);
+            cereal::BinaryOutputArchive archive(os);
+            archive(obj);
         }
 
         template<typename T>
@@ -77,11 +78,9 @@ namespace hpfw::cache {
                 return;
             }
 
-            {
-                std::ifstream is(filename, std::ios::binary);
-                cereal::BinaryInputArchive archive(is);
-                archive(obj);
-            }
+            std::ifstream is(filename, std::ios::binary);
+            cereal::BinaryInputArchive archive(is);
+            archive(obj);
         }
 
         static auto load_spectro(const std::string &f) -> std::pair<std::string, typename Algo::Spectrogram> {

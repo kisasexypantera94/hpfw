@@ -67,7 +67,7 @@ namespace hpfw {
 
         const SpectrogramHandler sh;
 
-        HashPrint() {
+        HashPrint() : sh() {
             Eigen::initParallel();
         }
 
@@ -102,7 +102,11 @@ namespace hpfw {
         /// Find top N eigen vectors - these are the filters.
         static auto calc_filters(const CovarianceMatrix &cov) -> Filters {
             Eigen::SelfAdjointEigenSolver<CovarianceMatrix> solver(cov);
-            return solver.eigenvectors().rowwise().reverse().transpose().block(0, 0, NumOfFilters, FrameSize);
+            return solver.eigenvectors()
+                    .rowwise()
+                    .reverse()
+                    .transpose()
+                    .block(0, 0, NumOfFilters, FrameSize);
         }
 
         /// Calculate deltas and apply threshold.
