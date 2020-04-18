@@ -30,7 +30,6 @@ target_link_libraries(
         INTERFACE
 
         Eigen3::Eigen
-        mpg123
         fftw3
         tbb
         essentia
