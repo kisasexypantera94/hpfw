@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -10,7 +11,7 @@
 
 namespace hpfw {
 
-    /// HashPrint provides "Collector" classes with the necessary tools to calculate hashprints.
+    /// HashprintHandle provides "Collector" classes with the necessary tools to calculate hashprints.
     ///
     /// Algorithm (taken from Audio Hashprints: Theory & Application):
     ///
@@ -50,10 +51,12 @@ namespace hpfw {
             typename SpectrogramHandler,
             size_t FramesContext,
             size_t T>
-    class HashPrint {
+    class HashprintHandle {
     public:
         using Spectrogram = typename SpectrogramHandler::Spectrogram;
+        /// Number of rows in spectrogram
         static constexpr size_t SpectroRows = Spectrogram::RowsAtCompileTime;
+        /// Size of one frame
         static constexpr size_t FrameSize = SpectroRows * FramesContext;
         /// Number of context frames on one side (left or right)
         static constexpr size_t W = FramesContext / 2;
@@ -63,15 +66,14 @@ namespace hpfw {
         using Frames = Eigen::Matrix<float, FrameSize, Eigen::Dynamic, Eigen::RowMajor>;
         using CovarianceMatrix = Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic>; // to pass static_assert
         using Filters = Eigen::Matrix<float, NumOfFilters, Eigen::Dynamic>;
-        using Fingerprint = std::vector<N>;
+        using Fingerprint = Eigen::Matrix<bool, NumOfFilters, Eigen::Dynamic>;
+        using Hashprint = std::vector<N>;
 
         const SpectrogramHandler sh;
 
-        HashPrint() : sh() {
-            Eigen::initParallel();
-        }
+        HashprintHandle() : sh() {}
 
-        ~HashPrint() = default;
+        ~HashprintHandle() = default;
 
         /// Add context to frames.
         static auto calc_frames(const Spectrogram &spectro) -> Frames {
@@ -114,12 +116,20 @@ namespace hpfw {
             using Eigen::Matrix;
             using Eigen::Dynamic;
 
-            Fingerprint fp(f.cols() - T);
+            Fingerprint fp(NumOfFilters, f.cols() - T);
             for (size_t i = 0; i < f.cols() - T; ++i) {
-                fp[i] = bool_col_to_num((f.col(i) - f.col(i + T)).array() >= 0);
+                fp.col(i) = (f.col(i) - f.col(i + T)).array() >= 0;
             }
 
             return fp;
+        }
+
+        static auto fingerprint_to_hashprint(const Fingerprint &fp) -> Hashprint {
+            Hashprint hp(static_cast<unsigned long>(fp.cols()));
+            for (size_t i = 0; i < fp.cols(); ++i) {
+                hp[i] = bool_col_to_num(fp.col(i));
+            }
+            return hp;
         }
 
     private:
@@ -131,6 +141,6 @@ namespace hpfw {
             }).sum();
         }
 
-    }; // HashPrint
+    }; // HashprintHandle
 
 } // hpfw

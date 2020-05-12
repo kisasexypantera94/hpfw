@@ -6,20 +6,23 @@
 
 namespace hpfw {
 
-    /// ParallelCollector is a parallel aggregation class which uses `HashPrint` tools to calculate fingerprints.
+    /// ParallelCollector is a parallel aggregation class which uses `HashprintHandle` tools to calculate fingerprints.
     ///
-    /// \tparam Algo - specific `HashPrint` implementation
+    /// \tparam Algo - specific `HashprintHandle` implementation
     /// \tparam Cache - storage for frames, filters and accumulated covariance matrix
     template<typename Algo, template<typename> typename Cache>
     class ParallelCollector {
     public:
-        using Fingerprint = typename Algo::Fingerprint;
+        using Spectrogram = typename Algo::Spectrogram;
+        using Frames = typename Algo::Frames;
         using CovarianceMatrix = typename Algo::CovarianceMatrix;
         using Filters = typename Algo::Filters;
+        using Fingerprint = typename Algo::Fingerprint;
+        using Hashprint = typename Algo::Hashprint;
 
         struct FilenameFingerprintPair {
             std::string filename;
-            Fingerprint fingerprint;
+            Hashprint fingerprint;
 
             template<class Archive>
             void serialize(Archive &ar) {
@@ -30,6 +33,8 @@ namespace hpfw {
 
         // TODO: cache config
         ParallelCollector() : algo(), cache("cache/") {
+            Eigen::initParallel();
+
             accum_cov.resize(Algo::FrameSize, Algo::FrameSize);
             filters.resize(Algo::NumOfFilters, Algo::FrameSize);
         }
@@ -42,10 +47,11 @@ namespace hpfw {
             return collect_fingerprints();
         }
 
-        auto calc_fingerprint(const std::string &filename) const -> Fingerprint {
-            const auto spectro = algo.sh.spectrogram(filename);
-            const auto frames = algo.calc_frames(spectro);
-            return algo.calc_fingerprint(filters * frames);
+        auto calc_hashprint(const std::string &filename) const -> Hashprint {
+            const Spectrogram spectro = algo.sh.spectrogram(filename);
+            const Frames frames = algo.calc_frames(spectro);
+            const Fingerprint fingerprint = algo.calc_fingerprint(filters * frames);
+            return algo.fingerprint_to_hashprint(fingerprint);
         }
 
         void save() const {
@@ -78,9 +84,9 @@ namespace hpfw {
                         try {
                             spdlog::info("Preprocessing '{}'", filename);
 
-                            const auto spectro = algo.sh.spectrogram(filename);
-                            const auto frames = algo.calc_frames(spectro);
-                            const auto cov = algo.calc_cov(frames.transpose());
+                            const Spectrogram spectro = algo.sh.spectrogram(filename);
+                            const Frames frames = algo.calc_frames(spectro);
+                            const CovarianceMatrix cov = algo.calc_cov(frames.transpose());
                             {
                                 std::scoped_lock lock(mtx);
                                 accum_cov += cov;
@@ -113,8 +119,10 @@ namespace hpfw {
                         const auto stem = std::string(std::filesystem::path(filename).stem());
                         spdlog::info("Calculating fingerprints for {}", stem);
 
-                        const auto frames = algo.calc_frames(spectro);
-                        fingerprints.push_back({stem, algo.calc_fingerprint(filters * frames)});
+                        const Frames frames = algo.calc_frames(spectro);
+                        const Fingerprint fingerprint = algo.calc_fingerprint(filters * frames);
+                        const Hashprint hashprint = algo.fingerprint_to_hashprint(fingerprint);
+                        fingerprints.push_back({stem, std::move(hashprint)});
                     }
             );
 

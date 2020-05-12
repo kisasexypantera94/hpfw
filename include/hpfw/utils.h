@@ -46,7 +46,7 @@ namespace hpfw::utils {
         using value_type = T;
     };
 
-    /// extract hashprint type from HashPrint
+    /// extract hashprint type from HashprintHandle
     template<
             template<typename, typename, size_t, size_t, typename> class X,
             typename N,

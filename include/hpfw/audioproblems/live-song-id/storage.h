@@ -18,21 +18,21 @@ namespace hpfw::db {
 
         ~MemoryStorage() = default;
 
-        void build(tbb::concurrent_vector<typename Collector::FilenameFingerprintPair> &&fingerprints) {
+        void build(tbb::concurrent_vector<typename Collector::FilenameFingerprintPair> &&hashprints) {
             // TODO: implement move constructor if needed at all
-            db = DB(std::make_move_iterator(fingerprints.begin()),
-                    std::make_move_iterator(fingerprints.end()));
+            db = DB(std::make_move_iterator(hashprints.begin()),
+                    std::make_move_iterator(hashprints.end()));
         }
 
-        auto find(const typename Collector::Fingerprint &fp) const -> SearchResult {
+        auto find(const typename Collector::Hashprint &hp) const -> SearchResult {
             SearchResult res = {"", std::numeric_limits<size_t>::max(), 0};
             // TODO: maybe parallelize search
-            for (const auto &[ref_filename, ref_fp] : db) {
+            for (const auto &[ref_filename, ref_hp] : db) {
                 uint64_t best_distance = std::numeric_limits<size_t>::max();
                 int64_t best_offset = 0;
 
-                size_t n = ref_fp.size();
-                size_t k = fp.size();
+                size_t n = ref_hp.size();
+                size_t k = hp.size();
                 if (n < k) {
                     k = n;
                 }
@@ -44,7 +44,7 @@ namespace hpfw::db {
                     size_t cnt = 0;
                     for (size_t j = 0; j < k; ++j) {
                         cnt += __builtin_popcountll(
-                                fp[j] ^ ref_fp[start_col + j]); // TODO: implement templated popcount
+                                hp[j] ^ ref_hp[start_col + j]); // TODO: implement templated popcount
                     }
 
                     if (cnt < best_distance) {

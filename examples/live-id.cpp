@@ -1,11 +1,9 @@
 #define NDEBUG
 
-#include <filesystem>
 #include <iostream>
 
 #include <hpfw/audioproblems/live-song-id/live_song_id.h>
 
-namespace fs = std::filesystem;
 using namespace std;
 
 constexpr auto index_dir = "/Users/chingachgook/dev/QtProjects/hpfw/original";
