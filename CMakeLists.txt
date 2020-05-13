@@ -23,6 +23,7 @@ target_include_directories(
         /opt/intel/compilers_and_libraries_2020.0.166/mac/mkl/include
 
         thirdparty/cpp-taskflow-2.2.0
+        thirdparty/annoy-1.16.3/src
 )
 
 target_link_libraries(

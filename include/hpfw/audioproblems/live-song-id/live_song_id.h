@@ -7,7 +7,9 @@
 #include "hpfw/core/cache.h"
 #include "hpfw/core/parallel_collector.h"
 #include "hpfw/spectrum/cqt.h"
+
 #include "storage.h"
+#include "ann_storage.h"
 
 namespace hpfw {
 
@@ -15,7 +17,7 @@ namespace hpfw {
     using DefaultLiveIdCollector = ParallelCollector<DefaultLiveIdAlgoConfig, cache::DriveCache>;
 
     template<typename Collector = DefaultLiveIdCollector,
-            typename Storage = db::MemoryStorage<DefaultLiveIdCollector>>
+            typename Storage = db::AnnStorage<DefaultLiveIdCollector>>
     class LiveSongIdentification {
     public:
         LiveSongIdentification() {
@@ -39,6 +41,7 @@ namespace hpfw {
                     auto res = storage.find(collector.calc_hashprint(f));
                     auto res_name = std::string(std::filesystem::path(res.filename).stem());
                     if (f.find(res_name) == std::string::npos) {
+                        spdlog::error("Wrong result for '{}': got '{}'", f, res_name);
                         ++cnt_wrong;
                     }
                     std::cout << "=> " << res.filename << " " << res.cnt << " " << res.offset << std::endl
