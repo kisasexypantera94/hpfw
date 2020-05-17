@@ -1,10 +1,23 @@
 #pragma once
 
+#include <deque>
+
 #include <cereal/cereal.hpp>
 #include <cereal/archives/binary.hpp>
 #include <Eigen/Dense>
 
 namespace hpfw::utils {
+
+    template<typename T, size_t Size>
+    class FixedStack : public std::deque<T> {
+    public:
+        void push(const T &value) {
+            if (this->size() == Size) {
+                this->pop_back();
+            }
+            this->push_front(value);
+        }
+    };
 
     template<typename Iterator, typename Func>
     auto chunks(Iterator begin, Iterator end, long k, long hop_length, Func f) {
@@ -65,7 +78,9 @@ namespace cereal {
 
     template<typename Archive, typename _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
-    typename std::enable_if<traits::is_output_serializable < BinaryData < _Scalar>, Archive>::value, void>::type
+    typename std::enable_if<traits::is_output_serializable < BinaryData < _Scalar>, Archive>::value, void>
+
+    ::type
     save(Archive &ar, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> const &m) {
         int32_t rows = m.rows();
         int32_t cols = m.cols();
@@ -76,7 +91,9 @@ namespace cereal {
 
     template<typename Archive, typename _Scalar, int _Rows, int _Cols, int _Options, int _MaxRows, int _MaxCols>
     inline
-    typename std::enable_if<traits::is_input_serializable < BinaryData < _Scalar>, Archive>::value, void>::type
+    typename std::enable_if<traits::is_input_serializable < BinaryData < _Scalar>, Archive>::value, void>
+
+    ::type
     load(Archive &ar, Eigen::Matrix<_Scalar, _Rows, _Cols, _Options, _MaxRows, _MaxCols> &m) {
         int32_t rows;
         int32_t cols;

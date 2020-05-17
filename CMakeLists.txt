@@ -83,3 +83,4 @@ target_compile_options(
 )
 
 add_subdirectory(examples)
+add_subdirectory(modules/python)

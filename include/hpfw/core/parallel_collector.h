@@ -1,5 +1,8 @@
 #pragma once
 
+#include <filesystem>
+
+#include <Eigen/Dense>
 #include <spdlog/spdlog.h>
 #include <taskflow/taskflow.hpp>
 #include <tbb/concurrent_vector.h>
@@ -44,6 +47,7 @@ namespace hpfw {
         /// Process audiofiles, calculate filters.
         auto prepare(const std::vector<std::string> &filenames) -> tbb::concurrent_vector<FilenameFingerprintPair> {
             preprocess(filenames);
+            save();
             return collect_fingerprints();
         }
 
@@ -104,7 +108,7 @@ namespace hpfw {
             executor.run(taskflow).wait();
 
             spdlog::info("Calculating filters");
-            filters = algo.calc_filters(accum_cov / cache.size());
+            filters = algo.calc_filters(accum_cov / (cache.size() + 1));
         }
 
         /// Collect fingerprints. Steps 3-6.

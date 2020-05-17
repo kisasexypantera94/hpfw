@@ -45,7 +45,7 @@ namespace hpfw::db {
             for (int64_t i = 0; i < hashprint.size(); ++i) {
                 std::vector<int32_t> results;
                 std::vector<uint64> distances;
-                index.get_nns_by_vector(&hashprint[i], 5, 10000, &results, &distances);
+                index.get_nns_by_vector(&hashprint[i], 5, 5000, &results, &distances);
 
                 for (int64_t j = 0; j < results.size(); ++j) {
                     FilenameOffsetPair p = song_dict[results[j]];
