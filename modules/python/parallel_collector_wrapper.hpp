@@ -29,6 +29,10 @@ namespace hpfw {
 
     auto par_collector_calc_hashprint(LiveIdCollector *collector, const char *filename, int *size) -> uint64 *;
 
+    void par_collector_save(LiveIdCollector *collector, const char *cache);
+
+    void par_collector_load(LiveIdCollector *collector, const char *cache);
+
     void prepare_result_free(FilenameHashprintPair *res, int got);
 
     void calc_hashprint_result_free(uint64 *hp);

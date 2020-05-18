@@ -52,4 +52,13 @@ namespace hpfw {
     void calc_hashprint_result_free(uint64 *hp) {
         delete[] hp;
     }
+
+    void par_collector_save(LiveIdCollector *collector, const char *cache) {
+        collector->save();
+    }
+
+    void par_collector_load(LiveIdCollector *collector, const char *cache) {
+        collector->load();
+    }
+
 }
