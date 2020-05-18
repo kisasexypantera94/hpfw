@@ -82,5 +82,5 @@ target_compile_options(
         -Wno-unused
 )
 
-add_subdirectory(examples)
+add_subdirectory(examples/cpp)
 add_subdirectory(modules/python)

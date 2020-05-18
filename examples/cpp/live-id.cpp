@@ -18,7 +18,7 @@ int main() {
     sort(search_files.begin(), search_files.end());
 
     hpfw::LiveSongIdentification liveid;
-    liveid.index(index_files);
+//    liveid.index(index_files);
     liveid.search(search_files);
 
     return 0;

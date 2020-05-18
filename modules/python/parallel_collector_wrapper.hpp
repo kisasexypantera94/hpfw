@@ -19,8 +19,20 @@ namespace hpfw {
     using LiveIdCollector = ParallelCollector<DefaultLiveIdAlgoConfig, cache::DriveCache>;
 
     auto par_collector_new() -> LiveIdCollector *;
+
     void par_collector_del(LiveIdCollector *collector);
-    auto par_collector_prepare(LiveIdCollector *collector, const char **filenames, int n) -> FilenameHashprintPair *;
+
+    auto par_collector_prepare(LiveIdCollector *collector,
+                               const char **filenames,
+                               int n,
+                               int *got) -> FilenameHashprintPair *;
+
+    auto par_collector_calc_hashprint(LiveIdCollector *collector, const char *filename, int *size) -> uint64 *;
+
+    void prepare_result_free(FilenameHashprintPair *res, int got);
+
+    void calc_hashprint_result_free(uint64 *hp);
+
 
 #ifdef __cplusplus
     }
