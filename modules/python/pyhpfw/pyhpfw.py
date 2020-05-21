@@ -1,4 +1,5 @@
 import ctypes
+from typing import List, Tuple
 
 import numpy as np
 
@@ -42,7 +43,7 @@ class ParallelCollector:
 
         self.__collector = self.__lib.par_collector_new()
 
-    def prepare(self, filenames):
+    def prepare(self, filenames: str) -> List[Tuple[str, np.ndarray]]:
         pyarr = [f.encode('utf-8') for f in filenames]
         arr = (ctypes.c_char_p * len(pyarr))(*pyarr)
         got = ctypes.c_int(0)
@@ -59,7 +60,7 @@ class ParallelCollector:
 
         return hashprints
 
-    def calc_hashprint(self, filename):
+    def calc_hashprint(self, filename: str) -> np.ndarray:
         size = ctypes.c_int(0)
         hp = self.__lib.par_collector_calc_hashprint(self.__collector,
                                                      ctypes.c_char_p(filename.encode('utf-8')),
@@ -70,10 +71,10 @@ class ParallelCollector:
 
         return hashprint
 
-    def load(self, cache):
+    def load(self, cache: str):
         self.__lib.par_collector_load(self.__collector, ctypes.c_char_p(cache.encode('utf-8')))
 
-    def save(self, cache):
+    def save(self, cache: str):
         self.__lib.par_collector_save(self.__collector, ctypes.c_char_p(cache.encode('utf-8')))
 
     def __del__(self):
